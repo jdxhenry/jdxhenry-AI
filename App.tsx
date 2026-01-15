@@ -50,9 +50,9 @@ import {
   RecurringFrequency,
   RecurringTemplate,
   CategoryType
-} from './types';
-import { storageService } from './storageService';
-import { parseSMS, getSimulatedSMS, ParsedSMS } from './smsParser';
+} from './types.ts';
+import { storageService } from './storageService.ts';
+import { parseSMS, getSimulatedSMS, ParsedSMS } from './smsParser.ts';
 
 // --- Helper for Formatting ---
 const formatCurrency = (val: number) => {
@@ -786,7 +786,8 @@ export default function App() {
                 <span className="text-xl font-bold text-slate-300">{prefs.currency}</span>
                 <input type="number" value={prefs.totalMonthlyIncome} onChange={(e) => {
                   const val = parseInt(e.target.value) || 0;
-                  const newP = {...prefs, totalMonthlyIncome: val};
+                  const iVal = isNaN(val) ? 0 : val;
+                  const newP = {...prefs, totalMonthlyIncome: iVal};
                   setPrefs(newP); storageService.savePreferences(newP);
                 }} className="w-full bg-transparent border-none font-black text-slate-800 focus:outline-none"/>
               </div>

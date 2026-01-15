@@ -1,5 +1,5 @@
 
-import { Category, Transaction, PaymentMethod } from './types';
+import { Category, Transaction, PaymentMethod } from './types.ts';
 
 export interface ParsedSMS {
   amount: number;

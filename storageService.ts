@@ -1,5 +1,5 @@
 
-import { Transaction, Budget, UserPreferences, Category, Currency, RecurringTemplate, CategoryType } from './types';
+import { Transaction, Budget, UserPreferences, Category, Currency, RecurringTemplate, CategoryType } from './types.ts';
 
 const KEYS = {
   TRANSACTIONS: 'budget_tracker_transactions',
