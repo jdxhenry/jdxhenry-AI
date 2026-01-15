@@ -1,5 +1,6 @@
 
 import { Transaction, Budget, UserPreferences, Category, Currency, RecurringTemplate, CategoryType } from './types.ts';
+import { securityService } from './securityService.ts';
 
 const KEYS = {
   TRANSACTIONS: 'budget_tracker_transactions',
@@ -34,80 +35,94 @@ const DEFAULT_BUDGETS: Budget[] = [
   { category: Category.HEALTHCARE, limitAmount: 2000 },
 ];
 
+async function getEncryptedItem<T>(key: string, defaultValue: T): Promise<T> {
+  const data = localStorage.getItem(key);
+  if (!data) return defaultValue;
+  const decrypted = await securityService.decrypt(data);
+  try {
+    return JSON.parse(decrypted);
+  } catch {
+    return defaultValue;
+  }
+}
+
+async function setEncryptedItem(key: string, value: any) {
+  const encrypted = await securityService.encrypt(JSON.stringify(value));
+  localStorage.setItem(key, encrypted);
+}
+
 export const storageService = {
-  getCategories: (): CategoryType[] => {
-    const data = localStorage.getItem(KEYS.CATEGORIES);
-    return data ? JSON.parse(data) : DEFAULT_CATEGORIES;
+  getCategories: async (): Promise<CategoryType[]> => {
+    return await getEncryptedItem(KEYS.CATEGORIES, DEFAULT_CATEGORIES);
   },
 
-  addCategory: (name: string) => {
-    const categories = storageService.getCategories();
+  addCategory: async (name: string) => {
+    const categories = await storageService.getCategories();
     if (!categories.includes(name)) {
       categories.push(name);
-      localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(categories));
+      await setEncryptedItem(KEYS.CATEGORIES, categories);
     }
   },
 
-  deleteCategory: (name: string) => {
-    const categories = storageService.getCategories();
+  deleteCategory: async (name: string) => {
+    const categories = await storageService.getCategories();
     const filtered = categories.filter(c => c !== name);
-    localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(filtered));
+    await setEncryptedItem(KEYS.CATEGORIES, filtered);
   },
 
-  getTransactions: (): Transaction[] => {
-    const data = localStorage.getItem(KEYS.TRANSACTIONS);
-    return data ? JSON.parse(data) : [];
+  getTransactions: async (): Promise<Transaction[]> => {
+    return await getEncryptedItem(KEYS.TRANSACTIONS, []);
   },
 
-  saveTransaction: (transaction: Transaction) => {
-    const transactions = storageService.getTransactions();
+  saveTransaction: async (transaction: Transaction) => {
+    const transactions = await storageService.getTransactions();
     transactions.unshift(transaction);
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(transactions));
+    await setEncryptedItem(KEYS.TRANSACTIONS, transactions);
   },
 
-  deleteTransaction: (id: string) => {
-    const transactions = storageService.getTransactions();
+  deleteTransaction: async (id: string) => {
+    const transactions = await storageService.getTransactions();
     const filtered = transactions.filter(t => t.id !== id);
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(filtered));
+    await setEncryptedItem(KEYS.TRANSACTIONS, filtered);
   },
 
-  getRecurringTemplates: (): RecurringTemplate[] => {
-    const data = localStorage.getItem(KEYS.RECURRING);
-    return data ? JSON.parse(data) : [];
+  getRecurringTemplates: async (): Promise<RecurringTemplate[]> => {
+    return await getEncryptedItem(KEYS.RECURRING, []);
   },
 
-  saveRecurringTemplate: (template: RecurringTemplate) => {
-    const templates = storageService.getRecurringTemplates();
+  saveRecurringTemplate: async (template: RecurringTemplate) => {
+    const templates = await storageService.getRecurringTemplates();
     templates.push(template);
-    localStorage.setItem(KEYS.RECURRING, JSON.stringify(templates));
+    await setEncryptedItem(KEYS.RECURRING, templates);
   },
 
-  updateRecurringTemplate: (updated: RecurringTemplate) => {
-    const templates = storageService.getRecurringTemplates();
+  updateRecurringTemplate: async (updated: RecurringTemplate) => {
+    const templates = await storageService.getRecurringTemplates();
     const index = templates.findIndex(t => t.id === updated.id);
     if (index !== -1) {
       templates[index] = updated;
-      localStorage.setItem(KEYS.RECURRING, JSON.stringify(templates));
+      await setEncryptedItem(KEYS.RECURRING, templates);
     }
   },
 
-  deleteRecurringTemplate: (id: string) => {
-    const templates = storageService.getRecurringTemplates();
+  deleteRecurringTemplate: async (id: string) => {
+    const templates = await storageService.getRecurringTemplates();
     const filtered = templates.filter(t => t.id !== id);
-    localStorage.setItem(KEYS.RECURRING, JSON.stringify(filtered));
+    await setEncryptedItem(KEYS.RECURRING, filtered);
   },
 
-  getBudgets: (): Budget[] => {
-    const data = localStorage.getItem(KEYS.BUDGETS);
-    return data ? JSON.parse(data) : DEFAULT_BUDGETS;
+  getBudgets: async (): Promise<Budget[]> => {
+    return await getEncryptedItem(KEYS.BUDGETS, DEFAULT_BUDGETS);
   },
 
-  saveBudgets: (budgets: Budget[]) => {
-    localStorage.setItem(KEYS.BUDGETS, JSON.stringify(budgets));
+  saveBudgets: async (budgets: Budget[]) => {
+    await setEncryptedItem(KEYS.BUDGETS, budgets);
   },
 
-  getPreferences: (): UserPreferences => {
+  getPreferences: async (): Promise<UserPreferences> => {
     const data = localStorage.getItem(KEYS.PREFERENCES);
+    // Preferences aren't encrypted in this version to allow immediate layout sizing, 
+    // but you could encrypt them too for total lockdown.
     return data ? JSON.parse(data) : DEFAULT_PREFS;
   },
 

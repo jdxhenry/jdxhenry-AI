@@ -35,7 +35,8 @@ import {
   Coins,
   ArrowUpRight,
   ArrowDownRight,
-  ChevronDown
+  ChevronDown,
+  Download
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -70,6 +71,12 @@ import { parseSMS, getSimulatedSMS, ParsedSMS } from './smsParser.ts';
 // --- Constants ---
 const CHART_COLORS = ['#4F46E5', '#F59E0B', '#10B981', '#8B5CF6', '#F97316', '#06B6D4', '#EC4899', '#64748B'];
 
+const DEFAULT_PREFS: UserPreferences = {
+  currency: Currency.INR,
+  isDarkMode: false,
+  totalMonthlyIncome: 75000
+};
+
 // --- Helper for Formatting ---
 const formatCurrency = (val: number) => {
   if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
@@ -80,33 +87,49 @@ const formatCurrency = (val: number) => {
 // --- Components ---
 
 const Navbar: React.FC<{ current: ViewState; setView: (v: ViewState) => void }> = ({ current, setView }) => {
-  const items = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-    { id: 'history', icon: Calendar, label: 'History' },
-    { id: 'insights', icon: TrendingUp, label: 'Trends' },
-  ];
-
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-8 py-4 pb-8 flex justify-between items-center z-50">
-      {items.map(({ id, icon: Icon, label }) => (
-        <button 
-          key={id}
-          onClick={() => setView(id as ViewState)}
-          className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === id ? 'text-blue-600' : 'text-slate-400'}`}
-        >
-          <Icon size={24} strokeWidth={current === id ? 2.5 : 2} />
-          <span className="text-[10px] font-bold tracking-tight">{label}</span>
-        </button>
-      ))}
-      <div className="relative">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-4 py-4 pb-8 flex justify-around items-center z-50">
+      <button 
+        onClick={() => setView('dashboard')}
+        className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === 'dashboard' ? 'text-blue-600' : 'text-slate-400'}`}
+      >
+        <LayoutDashboard size={24} strokeWidth={current === 'dashboard' ? 2.5 : 2} />
+        <span className="text-[10px] font-bold tracking-tight">Home</span>
+      </button>
+
+      <button 
+        onClick={() => setView('history')}
+        className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === 'history' ? 'text-blue-600' : 'text-slate-400'}`}
+      >
+        <Calendar size={24} strokeWidth={current === 'history' ? 2.5 : 2} />
+        <span className="text-[10px] font-bold tracking-tight">History</span>
+      </button>
+
+      <div className="flex flex-col items-center">
         <button 
           onClick={() => setView('add')}
           className="bg-blue-600 text-white w-14 h-14 rounded-full shadow-lg shadow-blue-500/40 active:scale-90 transition-transform flex items-center justify-center -mt-10"
         >
           <Plus size={32} />
         </button>
-        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-400">Wallets</span>
+        <span className="text-[10px] font-bold tracking-tight text-slate-400 mt-1">Add</span>
       </div>
+
+      <button 
+        onClick={() => setView('insights')}
+        className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === 'insights' ? 'text-blue-600' : 'text-slate-400'}`}
+      >
+        <TrendingUp size={24} strokeWidth={current === 'insights' ? 2.5 : 2} />
+        <span className="text-[10px] font-bold tracking-tight">Trends</span>
+      </button>
+
+      <button 
+        onClick={() => setView('settings')}
+        className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === 'settings' ? 'text-blue-600' : 'text-slate-400'}`}
+      >
+        <Settings size={24} strokeWidth={current === 'settings' ? 2.5 : 2} />
+        <span className="text-[10px] font-bold tracking-tight">Setup</span>
+      </button>
     </nav>
   );
 };
@@ -165,7 +188,7 @@ export default function App() {
   const [recurringTemplates, setRecurringTemplates] = useState<RecurringTemplate[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<CategoryType[]>([]);
-  const [prefs, setPrefs] = useState<UserPreferences>(storageService.getPreferences());
+  const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
   const [smsPermission, setSmsPermission] = useState<boolean>(() => {
     return localStorage.getItem('sms_detection_enabled') === 'true';
   });
@@ -174,7 +197,6 @@ export default function App() {
   // Background Scanning State
   const [detectedSMS, setDetectedSMS] = useState<ParsedSMS | null>(null);
   const [pendingTransaction, setPendingTransaction] = useState<Partial<Transaction & { frequency: RecurringFrequency }> | null>(null);
-  const [editingTemplate, setEditingTemplate] = useState<RecurringTemplate | null>(null);
 
   // Form States
   const [newTitle, setNewTitle] = useState('');
@@ -185,15 +207,24 @@ export default function App() {
   const [customCategoryName, setCustomCategoryName] = useState('');
 
   useEffect(() => {
-    setTransactions(storageService.getTransactions());
-    setBudgets(storageService.getBudgets());
-    setRecurringTemplates(storageService.getRecurringTemplates());
-    setCategories(storageService.getCategories());
-    processRecurringTransactions();
+    const init = async () => {
+      const txs = await storageService.getTransactions();
+      const bgs = await storageService.getBudgets();
+      const rts = await storageService.getRecurringTemplates();
+      const cats = await storageService.getCategories();
+      const p = await storageService.getPreferences();
+      
+      setTransactions(txs);
+      setBudgets(bgs);
+      setRecurringTemplates(rts);
+      setCategories(cats);
+      setPrefs(p);
+      processRecurringTransactions(rts);
+    };
+    init();
   }, []);
 
-  const processRecurringTransactions = () => {
-    const templates = storageService.getRecurringTemplates();
+  const processRecurringTransactions = async (templates: RecurringTemplate[]) => {
     const now = new Date();
     let updatedTemplates = [...templates];
     let newTxns: Transaction[] = [];
@@ -225,14 +256,16 @@ export default function App() {
 
     if (newTxns.length > 0) {
       setTransactions(prev => [...newTxns, ...prev]);
-      localStorage.setItem('budget_tracker_recurring', JSON.stringify(updatedTemplates));
+      for (const t of updatedTemplates) {
+        await storageService.updateRecurringTemplate(t);
+      }
       setRecurringTemplates(updatedTemplates);
     }
   };
 
   useEffect(() => {
     const backgroundScanner = setInterval(() => {
-      if (!smsPermission || detectedSMS || pendingTransaction || editingTemplate) return;
+      if (!smsPermission || detectedSMS || pendingTransaction) return;
       if (Math.random() < 0.15) {
         const smsText = getSimulatedSMS();
         const parsed = parseSMS(smsText);
@@ -240,7 +273,7 @@ export default function App() {
       }
     }, 15000);
     return () => clearInterval(backgroundScanner);
-  }, [detectedSMS, pendingTransaction, editingTemplate, smsPermission]);
+  }, [detectedSMS, pendingTransaction, smsPermission]);
 
   const totalExpense = useMemo(() => transactions.filter(t => t.isExpense).reduce((sum, t) => sum + t.amount, 0), [transactions]);
   const totalIncome = useMemo(() => transactions.filter(t => !t.isExpense).reduce((sum, t) => sum + t.amount, 0), [transactions]);
@@ -248,11 +281,10 @@ export default function App() {
   const savingsPercent = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
   const budgetUsedPercent = Math.min(100, (totalExpense / prefs.totalMonthlyIncome) * 100);
 
-  // --- Enhanced Insights / Trends Data Calculation ---
+  // --- Insights ---
   const insightsData = useMemo(() => {
     const expenses = transactions.filter(t => t.isExpense);
     
-    // Time Series grouping
     let timeSeriesData = [];
     if (timeRange === 'daily') {
       timeSeriesData = [...Array(30)].map((_, i) => {
@@ -294,7 +326,6 @@ export default function App() {
       });
     }
 
-    // Category breakdown
     const categoryBreakdown = categories.map((cat, idx) => {
       const sum = expenses
         .filter(t => t.category === cat)
@@ -304,12 +335,6 @@ export default function App() {
 
     return { timeSeriesData, categoryBreakdown };
   }, [transactions, categories, timeRange]);
-
-  const handleToggleSMS = () => {
-    const nextState = !smsPermission;
-    setSmsPermission(nextState);
-    localStorage.setItem('sms_detection_enabled', String(nextState));
-  };
 
   const startConfirmation = (custom?: Partial<Transaction & { frequency: RecurringFrequency }>) => {
     const title = custom?.title || newTitle;
@@ -323,7 +348,7 @@ export default function App() {
     setDetectedSMS(null);
   };
 
-  const finalizeSave = () => {
+  const finalizeSave = async () => {
     if (!pendingTransaction) return;
     const t: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
@@ -334,7 +359,7 @@ export default function App() {
       isExpense: pendingTransaction.isExpense!,
       paymentMethod: PaymentMethod.CASH,
     };
-    storageService.saveTransaction(t);
+    await storageService.saveTransaction(t);
     setTransactions(prev => [t, ...prev]);
     if (pendingTransaction.frequency && pendingTransaction.frequency !== RecurringFrequency.NONE) {
       const template: RecurringTemplate = {
@@ -348,31 +373,10 @@ export default function App() {
         lastProcessedDate: t.date,
         startDate: t.date
       };
-      storageService.saveRecurringTemplate(template);
+      await storageService.saveRecurringTemplate(template);
       setRecurringTemplates(prev => [...prev, template]);
     }
     setNewTitle(''); setNewAmount(''); setPendingTransaction(null); setView('dashboard');
-  };
-
-  const handleDeleteTransaction = (id: string) => {
-    if (confirm('Delete this transaction?')) {
-      storageService.deleteTransaction(id);
-      setTransactions(prev => prev.filter(t => t.id !== id));
-    }
-  };
-
-  const handleAddCategory = () => {
-    if (!customCategoryName.trim()) return;
-    storageService.addCategory(customCategoryName.trim());
-    setCategories(storageService.getCategories());
-    setCustomCategoryName('');
-  };
-
-  const handleDeleteCategory = (name: string) => {
-    if (confirm(`Remove "${name}"?`)) {
-      storageService.deleteCategory(name);
-      setCategories(storageService.getCategories());
-    }
   };
 
   const renderDashboard = () => (
@@ -389,7 +393,7 @@ export default function App() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setDetectedSMS(null)} className="p-2 text-slate-400 hover:text-white"><X size={18}/></button>
-              <button onClick={() => startConfirmation(detectedSMS as any)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-1">Review <ArrowRight size={14}/></button>
+              <button onClick={() => startConfirmation(detectedSMS as any)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1">Review <ArrowRight size={14}/></button>
             </div>
           </div>
         </div>
@@ -398,23 +402,19 @@ export default function App() {
       <header className="flex justify-between items-center">
         <div className="flex items-center gap-2.5">
           <div className="bg-blue-600 p-2 rounded-xl text-white shadow-md shadow-blue-500/20"><ShieldCheck size={24} /></div>
-          <span className="text-slate-800 font-bold tracking-widest text-sm uppercase">Private</span>
+          <div>
+            <span className="text-slate-800 font-bold tracking-widest text-[10px] uppercase block">Pro Wallet</span>
+            <div className="flex items-center gap-1">
+              <Lock size={10} className="text-emerald-500" />
+              <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-tighter">AES-256 Encrypted</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <button className="text-slate-800"><Moon size={24} /></button>
           <button onClick={() => setView('settings')} className="text-slate-800"><Settings size={24} /></button>
         </div>
       </header>
-
-      {!smsPermission && (
-        <div className="bg-blue-600 rounded-[2rem] p-6 text-white space-y-4 shadow-xl shadow-blue-500/30">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/20 p-2.5 rounded-xl"><Sparkles size={24} /></div>
-            <div><h3 className="font-black text-lg">Smart Sync</h3><p className="text-[10px] font-bold uppercase tracking-widest opacity-70">Log expenses automatically</p></div>
-          </div>
-          <button onClick={handleToggleSMS} className="w-full bg-white text-blue-600 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest">Enable Smart Detection</button>
-        </div>
-      )}
 
       <div className="relative flex justify-center py-4">
         <div className="w-72 h-72 relative">
@@ -433,7 +433,7 @@ export default function App() {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <p className="text-xs font-semibold text-slate-400 mb-1">Budget Used</p>
+            <p className="text-xs font-semibold text-slate-400 mb-1">Budget Spent</p>
             <p className="text-6xl font-black text-slate-900 tracking-tighter">{Math.round(budgetUsedPercent)}%</p>
             <p className="text-xl font-bold text-blue-600 mt-1">{prefs.currency}{totalExpense.toLocaleString()}</p>
           </div>
@@ -443,8 +443,8 @@ export default function App() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Income', value: `${prefs.currency}${formatCurrency(totalIncome)}` },
-          { label: 'Expenses', value: `${prefs.currency}${formatCurrency(totalExpense)}` },
-          { label: 'Savings', value: `${savingsPercent}%`, color: 'text-blue-600' }
+          { label: 'Spent', value: `${prefs.currency}${formatCurrency(totalExpense)}` },
+          { label: 'Saved', value: `${savingsPercent}%`, color: 'text-blue-600' }
         ].map((card, i) => (
           <div key={i} className="bg-white border border-slate-50 rounded-2xl p-4 shadow-sm text-center space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
@@ -472,7 +472,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Top Category Card (Image Style) */}
       <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">
@@ -480,12 +479,6 @@ export default function App() {
               <Tag size={16} />
             </div>
             <h2 className="text-base font-bold text-slate-800">Top Category</h2>
-          </div>
-          <div className="flex items-center gap-2 text-slate-400">
-             <div className="flex items-center gap-1 border border-slate-200 px-2 py-1 rounded-lg text-[10px] font-bold">
-               <Calendar size={12}/> Recent <ChevronDown size={12}/>
-             </div>
-             <MoreHorizontal size={18} />
           </div>
         </div>
 
@@ -506,7 +499,7 @@ export default function App() {
           </div>
           <div className="flex-1 space-y-3">
             {insightsData.categoryBreakdown.slice(0, 5).map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between group">
+              <div key={idx} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: item.fill }} />
                   <span className="text-xs font-bold text-slate-600 truncate max-w-[80px]">{item.name}</span>
@@ -514,19 +507,12 @@ export default function App() {
                 <span className="text-xs font-black text-slate-900">{prefs.currency}{formatCurrency(item.amount)}</span>
               </div>
             ))}
-            <button className="text-[10px] font-bold text-slate-400 border border-slate-200 px-3 py-1.5 rounded-lg mt-2 uppercase tracking-widest">More Details ...</button>
           </div>
         </div>
       </div>
 
-      {/* Spending Velocity Chart */}
       <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Spending Velocity</h2>
-          <div className="flex items-center gap-1 text-emerald-500 text-[10px] font-bold">
-            <ArrowUpRight size={14}/> +12.5%
-          </div>
-        </div>
+        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Spending Velocity</h2>
         <div className="h-48 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={insightsData.timeSeriesData}>
@@ -545,25 +531,22 @@ export default function App() {
               <YAxis hide />
               <Tooltip 
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 'bold' }}
-                formatter={(value: number) => [`${prefs.currency}${value.toLocaleString()}`, 'Spent']}
               />
               <Area type="monotone" dataKey="amount" stroke="#4F46E5" strokeWidth={3} fillOpacity={1} fill="url(#colorAmtTrends)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
+    </div>
+  );
 
-      {/* Insight Card */}
-      <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white flex items-center gap-4 shadow-xl">
-        <div className="bg-blue-600 p-3 rounded-2xl">
-          <Sparkles size={20} />
-        </div>
-        <div>
-          <h4 className="font-bold text-sm">Smart Summary</h4>
-          <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
-            Your daily average is <span className="text-white font-bold">{prefs.currency}{Math.round(totalExpense / 30)}</span>. Most of your money goes to <span className="text-blue-400 font-bold uppercase">{insightsData.categoryBreakdown[0]?.name || 'uncategorized'}</span> items.
-          </p>
-        </div>
+  const renderHistory = () => (
+    <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-6">
+      <h1 className="text-2xl font-black text-slate-900">Vault History</h1>
+      <div className="space-y-1">
+        {transactions.map(t => (
+          <TransactionRow key={t.id} transaction={t} currency={prefs.currency} onDelete={id => storageService.deleteTransaction(id).then(() => setTransactions(prev => prev.filter(p => p.id !== id)))} />
+        ))}
       </div>
     </div>
   );
@@ -572,7 +555,7 @@ export default function App() {
     <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-8 animate-in slide-in-from-bottom-full duration-500">
       <div className="flex justify-between items-center">
         <button onClick={() => setView('dashboard')} className="p-2 -ml-2 text-slate-400"><ChevronLeft size={28} /></button>
-        <h1 className="text-sm font-bold text-slate-800 uppercase tracking-widest">New Entry</h1>
+        <h1 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Add Secure Entry</h1>
         <div className="w-8" />
       </div>
       <div className="text-center space-y-4">
@@ -585,77 +568,9 @@ export default function App() {
           />
         </div>
       </div>
-      <div className="flex bg-slate-50 p-1.5 rounded-2xl">
-        <button onClick={() => { setIsExpenseMode(true); setNewCategory(Category.GROCERIES); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${isExpenseMode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Expense</button>
-        <button onClick={() => { setIsExpenseMode(false); setNewCategory(Category.INCOME); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${!isExpenseMode ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Income</button>
-      </div>
       <div className="space-y-6">
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Label</label>
-          <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="e.g. Weekly Groceries" className="w-full bg-slate-50 rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 focus:outline-none"/>
-        </div>
-        {isExpenseMode && (
-          <div className="space-y-3">
-            <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Category</label>
-            <div className="grid grid-cols-4 gap-3">
-              {categories.map(cat => (
-                <button key={cat} onClick={() => setNewCategory(cat)} className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all border ${newCategory === cat ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-400'}`}>
-                  <CategoryIcon category={cat} className="!p-0 !bg-transparent !text-inherit" />
-                  <span className="text-[8px] font-bold uppercase truncate w-full text-center">{cat}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20">Continue</button>
-    </div>
-  );
-
-  const renderConfirmationModal = () => {
-    if (!pendingTransaction) return null;
-    return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center px-6">
-        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setPendingTransaction(null)}/>
-        <div className="relative bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95">
-          <div className="flex flex-col items-center space-y-6">
-            <CategoryIcon category={pendingTransaction.category!} />
-            <div className="w-full text-center space-y-1">
-              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Review Transaction</h3>
-              <p className="text-3xl font-black text-slate-900">{prefs.currency}{pendingTransaction.amount}</p>
-            </div>
-            <div className="flex w-full gap-3">
-              <button onClick={() => setPendingTransaction(null)} className="flex-1 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-50">Cancel</button>
-              <button onClick={finalizeSave} className="flex-1 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-white bg-blue-600">Confirm</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderHistory = () => (
-    <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-6">
-      <h1 className="text-2xl font-black text-slate-900">Timeline</h1>
-      <div className="space-y-6">
-        {transactions.length === 0 ? (
-          <div className="py-20 text-center text-slate-400 font-bold">No entries found</div>
-        ) : (
-          ['This Month', 'Earlier'].map(group => {
-            const filtered = group === 'This Month' 
-              ? transactions.filter(t => new Date(t.date).getMonth() === new Date().getMonth())
-              : transactions.filter(t => new Date(t.date).getMonth() !== new Date().getMonth());
-            if (filtered.length === 0) return null;
-            return (
-              <div key={group} className="space-y-4">
-                <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">{group}</h3>
-                <div className="space-y-1">
-                  {filtered.map(t => <TransactionRow key={t.id} transaction={t} currency={prefs.currency} onDelete={handleDeleteTransaction} />)}
-                </div>
-              </div>
-            );
-          })
-        )}
+        <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Label" className="w-full bg-slate-50 rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 focus:outline-none"/>
+        <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20">Encrypt & Save</button>
       </div>
     </div>
   );
@@ -669,23 +584,45 @@ export default function App() {
       <div className="space-y-12">
         <section className="space-y-6">
           <div className="flex items-center gap-2 px-1">
-            <div className="p-2 bg-blue-600 text-white rounded-lg"><MessageSquare size={18}/></div>
-            <h2 className="text-lg font-bold text-slate-800">Smart Detection</h2>
+            <div className="p-2 bg-emerald-600 text-white rounded-lg"><Lock size={18}/></div>
+            <h2 className="text-lg font-bold text-slate-800">Security Vault</h2>
           </div>
-          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-6">
-            <div className="flex items-center justify-between py-2">
-              <div><p className="text-xs font-bold text-slate-900">SMS Sync</p></div>
-              <button onClick={handleToggleSMS} className={`w-14 h-8 rounded-full transition-all flex items-center px-1 ${smsPermission ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`w-6 h-6 bg-white rounded-full shadow-sm transform transition-transform ${smsPermission ? 'translate-x-6' : 'translate-x-0'}`} /></button>
-            </div>
+          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-4">
+             <button 
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify(transactions)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `private_vault.json`;
+                  a.click();
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-slate-600"
+              >
+                <Download size={14}/> Export Vault
+              </button>
           </div>
         </section>
         <section className="space-y-6">
-          <div className="flex items-center gap-2 px-1"><div className="p-2 bg-slate-50 text-slate-600 rounded-lg"><Settings size={18}/></div><h2 className="text-lg font-bold text-slate-800">Preferences</h2></div>
+          <div className="flex items-center gap-2 px-1">
+             <div className="p-2 bg-slate-50 text-slate-600 rounded-lg"><Settings size={18}/></div>
+             <h2 className="text-lg font-bold text-slate-800">Preferences</h2>
+          </div>
           <div className="bg-slate-50 p-6 rounded-[2rem] space-y-4">
             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Display Currency</label>
             <div className="grid grid-cols-4 gap-2">
               {Object.entries(Currency).map(([key, symbol]) => (
-                <button key={key} onClick={() => { const newP = {...prefs, currency: symbol as Currency}; setPrefs(newP); storageService.savePreferences(newP); }} className={`py-3 rounded-xl text-lg font-bold transition-all ${prefs.currency === symbol ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}>{symbol}</button>
+                <button 
+                  key={key} 
+                  onClick={() => { 
+                    const newP = {...prefs, currency: symbol as Currency}; 
+                    setPrefs(newP); 
+                    storageService.savePreferences(newP); 
+                  }} 
+                  className={`py-3 rounded-xl text-lg font-bold transition-all ${prefs.currency === symbol ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}
+                >
+                  {symbol}
+                </button>
               ))}
             </div>
           </div>
@@ -705,7 +642,21 @@ export default function App() {
           {view === 'settings' && renderSettings()}
         </main>
         {view !== 'add' && <Navbar current={view} setView={setView} />}
-        {renderConfirmationModal()}
+        {pendingTransaction && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center px-6">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setPendingTransaction(null)}/>
+            <div className="relative bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95">
+              <div className="flex flex-col items-center space-y-6">
+                <CategoryIcon category={pendingTransaction.category!} />
+                <div className="w-full text-center space-y-1">
+                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Review Entry</h3>
+                  <p className="text-3xl font-black text-slate-900">{prefs.currency}{pendingTransaction.amount}</p>
+                </div>
+                <button onClick={finalizeSave} className="w-full py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-white bg-blue-600">Save Securely</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
