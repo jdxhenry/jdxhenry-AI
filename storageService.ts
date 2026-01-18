@@ -1,5 +1,5 @@
 
-import { Transaction, Budget, UserPreferences, Category, Currency, RecurringTemplate, CategoryType } from './types.ts';
+import { Transaction, Budget, UserPreferences, CATEGORY_MAP, Currency, RecurringTemplate, CategoryType } from './types.ts';
 import { securityService } from './securityService.ts';
 
 const KEYS = {
@@ -10,15 +10,7 @@ const KEYS = {
   CATEGORIES: 'budget_tracker_categories'
 };
 
-const DEFAULT_CATEGORIES: CategoryType[] = [
-  Category.HOUSING,
-  Category.GROCERIES,
-  Category.TRANSPORT,
-  Category.LEISURE,
-  Category.UTILITIES,
-  Category.HEALTHCARE,
-  Category.OTHER
-];
+const DEFAULT_CATEGORIES: CategoryType[] = Object.keys(CATEGORY_MAP);
 
 const DEFAULT_PREFS: UserPreferences = {
   currency: Currency.INR,
@@ -26,14 +18,10 @@ const DEFAULT_PREFS: UserPreferences = {
   totalMonthlyIncome: 75000
 };
 
-const DEFAULT_BUDGETS: Budget[] = [
-  { category: Category.HOUSING, limitAmount: 20000 },
-  { category: Category.GROCERIES, limitAmount: 10000 },
-  { category: Category.TRANSPORT, limitAmount: 5000 },
-  { category: Category.LEISURE, limitAmount: 5000 },
-  { category: Category.UTILITIES, limitAmount: 3000 },
-  { category: Category.HEALTHCARE, limitAmount: 2000 },
-];
+const DEFAULT_BUDGETS: Budget[] = Object.keys(CATEGORY_MAP).map(cat => ({
+  category: cat,
+  limitAmount: 5000
+}));
 
 async function getEncryptedItem<T>(key: string, defaultValue: T): Promise<T> {
   const data = localStorage.getItem(key);
@@ -121,8 +109,6 @@ export const storageService = {
 
   getPreferences: async (): Promise<UserPreferences> => {
     const data = localStorage.getItem(KEYS.PREFERENCES);
-    // Preferences aren't encrypted in this version to allow immediate layout sizing, 
-    // but you could encrypt them too for total lockdown.
     return data ? JSON.parse(data) : DEFAULT_PREFS;
   },
 

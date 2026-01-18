@@ -36,7 +36,19 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ChevronDown,
-  Download
+  Download,
+  Book,
+  Smartphone,
+  Film,
+  Plane,
+  Heart,
+  Briefcase,
+  Monitor,
+  Wrench,
+  AlertTriangle,
+  CreditCard,
+  Wifi,
+  Wallet
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -58,7 +70,7 @@ import {
   Transaction, 
   Budget, 
   UserPreferences, 
-  Category, 
+  CATEGORY_MAP, 
   Currency, 
   PaymentMethod,
   RecurringFrequency,
@@ -137,14 +149,20 @@ const Navbar: React.FC<{ current: ViewState; setView: (v: ViewState) => void }> 
 const CategoryIcon: React.FC<{ category: CategoryType; className?: string }> = ({ category, className }) => {
   const baseClass = "p-2.5 rounded-xl bg-slate-50 text-slate-600 " + (className || "");
   switch (category) {
-    case Category.HOUSING: return <div className={baseClass}><Home size={22} /></div>;
-    case Category.GROCERIES: return <div className={baseClass}><ShoppingCart size={22} /></div>;
-    case Category.TRANSPORT: return <div className={baseClass}><Car size={22} /></div>;
-    case Category.LEISURE: return <div className={baseClass}><Coffee size={22} /></div>;
-    case Category.HEALTHCARE: return <div className={baseClass}><HeartPulse size={22} /></div>;
-    case Category.UTILITIES: return <div className={baseClass}><Zap size={22} /></div>;
-    case Category.INCOME: return <div className={baseClass}><Banknote size={22} /></div>;
-    case Category.OTHER: return <div className={baseClass}><MoreHorizontal size={22} /></div>;
+    case 'Housing & Utilities': return <div className={baseClass}><Home size={22} /></div>;
+    case 'Food & Groceries': return <div className={baseClass}><ShoppingCart size={22} /></div>;
+    case 'Transportation': return <div className={baseClass}><Car size={22} /></div>;
+    case 'Health & Medical': return <div className={baseClass}><HeartPulse size={22} /></div>;
+    case 'Education & Learning': return <div className={baseClass}><Book size={22} /></div>;
+    case 'Personal & Lifestyle': return <div className={baseClass}><Briefcase size={22} /></div>;
+    case 'Entertainment & Leisure': return <div className={baseClass}><Film size={22} /></div>;
+    case 'Travel & Vacation': return <div className={baseClass}><Plane size={22} /></div>;
+    case 'Family & Social': return <div className={baseClass}><Heart size={22} /></div>;
+    case 'Financial Commitments': return <div className={baseClass}><Banknote size={22} /></div>;
+    case 'Digital & Online': return <div className={baseClass}><Monitor size={22} /></div>;
+    case 'Household & Miscellaneous': return <div className={baseClass}><Wrench size={22} /></div>;
+    case 'Emergency / Irregular': return <div className={baseClass}><AlertTriangle size={22} /></div>;
+    case 'Income': return <div className={baseClass}><Coins size={22} /></div>;
     default: return <div className={baseClass}><Box size={22} /></div>;
   }
 };
@@ -159,9 +177,16 @@ const TransactionRow: React.FC<{
       <div className={`p-3 rounded-xl ${transaction.isExpense ? 'bg-slate-50 text-slate-600' : 'bg-emerald-50 text-emerald-600'}`}>
         <CategoryIcon category={transaction.category} className="!p-0 !bg-transparent" />
       </div>
-      <div>
-        <p className="font-bold text-slate-800 text-sm">{transaction.title}</p>
-        <p className="text-[11px] text-slate-400 font-medium">{new Date(transaction.date).toLocaleDateString()}</p>
+      <div className="max-w-[150px]">
+        <p className="font-bold text-slate-800 text-sm truncate">{transaction.title}</p>
+        <div className="flex items-center gap-1">
+          <p className="text-[10px] text-slate-400 font-medium truncate">
+            {transaction.subCategory || transaction.category}
+          </p>
+          <span className="text-[8px] bg-slate-100 px-1 rounded uppercase font-bold text-slate-400">
+            {transaction.paymentMethod}
+          </span>
+        </div>
       </div>
     </div>
     <div className="flex items-center gap-4">
@@ -169,6 +194,7 @@ const TransactionRow: React.FC<{
         <p className={`font-bold ${transaction.isExpense ? 'text-slate-900' : 'text-emerald-600'}`}>
           {transaction.isExpense ? '-' : '+'}{currency}{transaction.amount.toLocaleString()}
         </p>
+        <p className="text-[9px] text-slate-300 font-medium">{new Date(transaction.date).toLocaleDateString()}</p>
       </div>
       <button 
         onClick={() => onDelete(transaction.id)}
@@ -201,10 +227,11 @@ export default function App() {
   // Form States
   const [newTitle, setNewTitle] = useState('');
   const [newAmount, setNewAmount] = useState('');
-  const [newCategory, setNewCategory] = useState<CategoryType>(Category.GROCERIES);
+  const [newCategory, setNewCategory] = useState<CategoryType>(Object.keys(CATEGORY_MAP)[1]); // Default Food & Groceries
+  const [newSubCategory, setNewSubCategory] = useState<string>('');
+  const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
   const [isExpenseMode, setIsExpenseMode] = useState(true);
   const [newFrequency, setNewFrequency] = useState<RecurringFrequency>(RecurringFrequency.NONE);
-  const [customCategoryName, setCustomCategoryName] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -243,6 +270,7 @@ export default function App() {
           title: `[Recurring] ${template.title}`,
           amount: template.amount,
           category: template.category,
+          subCategory: template.subCategory,
           date: nextDate.toISOString(),
           isExpense: template.isExpense,
           paymentMethod: template.paymentMethod
@@ -281,7 +309,6 @@ export default function App() {
   const savingsPercent = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
   const budgetUsedPercent = Math.min(100, (totalExpense / prefs.totalMonthlyIncome) * 100);
 
-  // --- Insights ---
   const insightsData = useMemo(() => {
     const expenses = transactions.filter(t => t.isExpense);
     
@@ -326,7 +353,7 @@ export default function App() {
       });
     }
 
-    const categoryBreakdown = categories.map((cat, idx) => {
+    const categoryBreakdown = Object.keys(CATEGORY_MAP).map((cat, idx) => {
       const sum = expenses
         .filter(t => t.category === cat)
         .reduce((sum, t) => sum + t.amount, 0);
@@ -334,17 +361,19 @@ export default function App() {
     }).filter(c => c.amount > 0).sort((a, b) => b.amount - a.amount);
 
     return { timeSeriesData, categoryBreakdown };
-  }, [transactions, categories, timeRange]);
+  }, [transactions, timeRange]);
 
   const startConfirmation = (custom?: Partial<Transaction & { frequency: RecurringFrequency }>) => {
     const title = custom?.title || newTitle;
     const amountStr = custom?.amount?.toString() || newAmount;
     const amount = parseFloat(amountStr);
-    const category = custom?.category || (isExpenseMode ? newCategory : Category.INCOME);
+    const category = custom?.category || newCategory;
+    const subCategory = custom?.subCategory || newSubCategory;
+    const paymentMethod = custom?.paymentMethod || newPaymentMethod;
     const isExpense = custom?.isExpense ?? isExpenseMode;
     const frequency = custom?.frequency || newFrequency;
     if (!title || isNaN(amount) || amount <= 0) return;
-    setPendingTransaction({ title, amount, category, isExpense, frequency });
+    setPendingTransaction({ title, amount, category, subCategory, paymentMethod, isExpense, frequency });
     setDetectedSMS(null);
   };
 
@@ -355,9 +384,10 @@ export default function App() {
       title: pendingTransaction.title!,
       amount: pendingTransaction.amount!,
       category: pendingTransaction.category!,
+      subCategory: pendingTransaction.subCategory,
       date: new Date().toISOString(),
       isExpense: pendingTransaction.isExpense!,
-      paymentMethod: PaymentMethod.CASH,
+      paymentMethod: pendingTransaction.paymentMethod || PaymentMethod.UPI,
     };
     await storageService.saveTransaction(t);
     setTransactions(prev => [t, ...prev]);
@@ -367,6 +397,7 @@ export default function App() {
         title: t.title,
         amount: t.amount,
         category: t.category,
+        subCategory: t.subCategory,
         isExpense: t.isExpense,
         paymentMethod: t.paymentMethod,
         frequency: pendingTransaction.frequency,
@@ -377,6 +408,7 @@ export default function App() {
       setRecurringTemplates(prev => [...prev, template]);
     }
     setNewTitle(''); setNewAmount(''); setPendingTransaction(null); setView('dashboard');
+    setNewSubCategory('');
   };
 
   const renderDashboard = () => (
@@ -393,7 +425,7 @@ export default function App() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setDetectedSMS(null)} className="p-2 text-slate-400 hover:text-white"><X size={18}/></button>
-              <button onClick={() => startConfirmation(detectedSMS as any)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1">Review <ArrowRight size={14}/></button>
+              <button onClick={() => startConfirmation({ ...detectedSMS, paymentMethod: PaymentMethod.UPI } as any)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1">Review <ArrowRight size={14}/></button>
             </div>
           </div>
         </div>
@@ -478,7 +510,7 @@ export default function App() {
             <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg">
               <Tag size={16} />
             </div>
-            <h2 className="text-base font-bold text-slate-800">Top Category</h2>
+            <h2 className="text-base font-bold text-slate-800">Top Categories</h2>
           </div>
         </div>
 
@@ -500,11 +532,11 @@ export default function App() {
           <div className="flex-1 space-y-3">
             {insightsData.categoryBreakdown.slice(0, 5).map((item, idx) => (
               <div key={idx} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: item.fill }} />
-                  <span className="text-xs font-bold text-slate-600 truncate max-w-[80px]">{item.name}</span>
+                  <span className="text-[10px] font-bold text-slate-600 truncate max-w-[80px]">{item.name}</span>
                 </div>
-                <span className="text-xs font-black text-slate-900">{prefs.currency}{formatCurrency(item.amount)}</span>
+                <span className="text-[10px] font-black text-slate-900">{prefs.currency}{formatCurrency(item.amount)}</span>
               </div>
             ))}
           </div>
@@ -543,21 +575,26 @@ export default function App() {
   const renderHistory = () => (
     <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-6">
       <h1 className="text-2xl font-black text-slate-900">Vault History</h1>
-      <div className="space-y-1">
-        {transactions.map(t => (
-          <TransactionRow key={t.id} transaction={t} currency={prefs.currency} onDelete={id => storageService.deleteTransaction(id).then(() => setTransactions(prev => prev.filter(p => p.id !== id)))} />
-        ))}
+      <div className="space-y-1 overflow-y-auto max-h-[70vh] custom-scrollbar">
+        {transactions.length === 0 ? (
+          <p className="text-center text-slate-400 py-20 font-bold">No entries yet</p>
+        ) : (
+          transactions.map(t => (
+            <TransactionRow key={t.id} transaction={t} currency={prefs.currency} onDelete={id => storageService.deleteTransaction(id).then(() => setTransactions(prev => prev.filter(p => p.id !== id)))} />
+          ))
+        )}
       </div>
     </div>
   );
 
   const renderAdd = () => (
-    <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-8 animate-in slide-in-from-bottom-full duration-500">
+    <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-8 animate-in slide-in-from-bottom-full duration-500 overflow-y-auto custom-scrollbar">
       <div className="flex justify-between items-center">
         <button onClick={() => setView('dashboard')} className="p-2 -ml-2 text-slate-400"><ChevronLeft size={28} /></button>
         <h1 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Add Secure Entry</h1>
         <div className="w-8" />
       </div>
+      
       <div className="text-center space-y-4">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enter Amount</p>
         <div className="flex items-center justify-center gap-2">
@@ -568,10 +605,70 @@ export default function App() {
           />
         </div>
       </div>
-      <div className="space-y-6">
-        <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Label" className="w-full bg-slate-50 rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 focus:outline-none"/>
-        <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20">Encrypt & Save</button>
+
+      <div className="flex bg-slate-50 p-1.5 rounded-2xl">
+        <button onClick={() => { setIsExpenseMode(true); setNewCategory(Object.keys(CATEGORY_MAP)[1]); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${isExpenseMode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Expense</button>
+        <button onClick={() => { setIsExpenseMode(false); setNewCategory('Income'); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${!isExpenseMode ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Income</button>
       </div>
+
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Label</label>
+          <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="e.g. Starbucks Coffee" className="w-full bg-slate-50 rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 focus:outline-none"/>
+        </div>
+
+        <div className="space-y-4">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Payment Mode</label>
+          <div className="grid grid-cols-4 gap-2">
+            {[PaymentMethod.UPI, PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.NET_BANKING].map((method) => (
+              <button
+                key={method}
+                onClick={() => setNewPaymentMethod(method)}
+                className={`py-3 rounded-xl text-[9px] font-bold uppercase transition-all border ${newPaymentMethod === method ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                {method}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Category</label>
+          <div className="grid grid-cols-3 gap-3">
+            {(isExpenseMode ? Object.keys(CATEGORY_MAP).filter(k => k !== 'Income') : ['Income']).map(cat => (
+              <button 
+                key={cat} 
+                onClick={() => {
+                  setNewCategory(cat);
+                  setNewSubCategory('');
+                }} 
+                className={`flex flex-col items-center gap-2 p-3 rounded-2xl transition-all border ${newCategory === cat ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-transparent'}`}
+              >
+                <CategoryIcon category={cat} className={`!p-0 !bg-transparent ${newCategory === cat ? '!text-blue-600' : '!text-slate-400'}`} />
+                <span className={`text-[8px] font-bold uppercase text-center leading-tight ${newCategory === cat ? 'text-blue-600' : 'text-slate-400'}`}>{cat}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {newCategory && CATEGORY_MAP[newCategory] && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Sub-category</label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_MAP[newCategory].map(sub => (
+                <button
+                  key={sub}
+                  onClick={() => setNewSubCategory(sub)}
+                  className={`px-3 py-2 rounded-full text-[9px] font-bold uppercase transition-all border ${newSubCategory === sub ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-400 border-transparent'}`}
+                >
+                  {sub}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20">Encrypt & Save</button>
     </div>
   );
 
@@ -601,6 +698,17 @@ export default function App() {
               >
                 <Download size={14}/> Export Vault
               </button>
+              <button 
+                onClick={() => {
+                   if(confirm('Wipe all local data? This cannot be undone.')) {
+                     storageService.clearAll();
+                     window.location.reload();
+                   }
+                }}
+                className="w-full py-3 text-red-500 text-[10px] font-bold uppercase tracking-widest"
+              >
+                Clear All Data
+              </button>
           </div>
         </section>
         <section className="space-y-6">
@@ -608,22 +716,41 @@ export default function App() {
              <div className="p-2 bg-slate-50 text-slate-600 rounded-lg"><Settings size={18}/></div>
              <h2 className="text-lg font-bold text-slate-800">Preferences</h2>
           </div>
-          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-4">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Display Currency</label>
-            <div className="grid grid-cols-4 gap-2">
-              {Object.entries(Currency).map(([key, symbol]) => (
-                <button 
-                  key={key} 
-                  onClick={() => { 
-                    const newP = {...prefs, currency: symbol as Currency}; 
-                    setPrefs(newP); 
-                    storageService.savePreferences(newP); 
-                  }} 
-                  className={`py-3 rounded-xl text-lg font-bold transition-all ${prefs.currency === symbol ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}
-                >
-                  {symbol}
-                </button>
-              ))}
+          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-6">
+            <div className="space-y-4">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Display Currency</label>
+              <div className="grid grid-cols-4 gap-2">
+                {Object.entries(Currency).map(([key, symbol]) => (
+                  <button 
+                    key={key} 
+                    onClick={() => { 
+                      const newP = {...prefs, currency: symbol as Currency}; 
+                      setPrefs(newP); 
+                      storageService.savePreferences(newP); 
+                    }} 
+                    className={`py-3 rounded-xl text-lg font-bold transition-all ${prefs.currency === symbol ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400'}`}
+                  >
+                    {symbol}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-4">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Monthly Income Target</label>
+              <div className="flex items-center bg-white rounded-2xl p-4 gap-3 border border-slate-100">
+                <span className="font-bold text-slate-400">{prefs.currency}</span>
+                <input 
+                  type="number" 
+                  value={prefs.totalMonthlyIncome} 
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    const newP = {...prefs, totalMonthlyIncome: val};
+                    setPrefs(newP);
+                    storageService.savePreferences(newP);
+                  }}
+                  className="bg-transparent border-none outline-none font-bold text-slate-800 w-full"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -651,6 +778,9 @@ export default function App() {
                 <div className="w-full text-center space-y-1">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Review Entry</h3>
                   <p className="text-3xl font-black text-slate-900">{prefs.currency}{pendingTransaction.amount}</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                    {pendingTransaction.category} {pendingTransaction.subCategory && `• ${pendingTransaction.subCategory}`}
+                  </p>
                 </div>
                 <button onClick={finalizeSave} className="w-full py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-white bg-blue-600">Save Securely</button>
               </div>
