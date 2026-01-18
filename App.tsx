@@ -364,7 +364,6 @@ export default function App() {
   }, [transactions, timeRange]);
 
   const startConfirmation = (custom?: Partial<Transaction & { frequency: RecurringFrequency }>) => {
-    const title = custom?.title || newTitle;
     const amountStr = custom?.amount?.toString() || newAmount;
     const amount = parseFloat(amountStr);
     const category = custom?.category || newCategory;
@@ -372,16 +371,22 @@ export default function App() {
     const paymentMethod = custom?.paymentMethod || newPaymentMethod;
     const isExpense = custom?.isExpense ?? isExpenseMode;
     const frequency = custom?.frequency || newFrequency;
-    if (!title || isNaN(amount) || amount <= 0) return;
+    
+    // Fallback title if empty: use sub-category or category name
+    const title = custom?.title || newTitle || (subCategory !== '' ? subCategory : category);
+
+    if (isNaN(amount) || amount <= 0) return;
+
     setPendingTransaction({ title, amount, category, subCategory, paymentMethod, isExpense, frequency });
     setDetectedSMS(null);
   };
 
   const finalizeSave = async () => {
     if (!pendingTransaction) return;
+    
     const t: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
-      title: pendingTransaction.title!,
+      title: pendingTransaction.title || (pendingTransaction.subCategory || pendingTransaction.category!),
       amount: pendingTransaction.amount!,
       category: pendingTransaction.category!,
       subCategory: pendingTransaction.subCategory,
@@ -389,26 +394,38 @@ export default function App() {
       isExpense: pendingTransaction.isExpense!,
       paymentMethod: pendingTransaction.paymentMethod || PaymentMethod.UPI,
     };
-    await storageService.saveTransaction(t);
-    setTransactions(prev => [t, ...prev]);
-    if (pendingTransaction.frequency && pendingTransaction.frequency !== RecurringFrequency.NONE) {
-      const template: RecurringTemplate = {
-        id: Math.random().toString(36).substr(2, 9),
-        title: t.title,
-        amount: t.amount,
-        category: t.category,
-        subCategory: t.subCategory,
-        isExpense: t.isExpense,
-        paymentMethod: t.paymentMethod,
-        frequency: pendingTransaction.frequency,
-        lastProcessedDate: t.date,
-        startDate: t.date
-      };
-      await storageService.saveRecurringTemplate(template);
-      setRecurringTemplates(prev => [...prev, template]);
+
+    try {
+      await storageService.saveTransaction(t);
+      setTransactions(prev => [t, ...prev]);
+
+      if (pendingTransaction.frequency && pendingTransaction.frequency !== RecurringFrequency.NONE) {
+        const template: RecurringTemplate = {
+          id: Math.random().toString(36).substr(2, 9),
+          title: t.title,
+          amount: t.amount,
+          category: t.category,
+          subCategory: t.subCategory,
+          isExpense: t.isExpense,
+          paymentMethod: t.paymentMethod,
+          frequency: pendingTransaction.frequency,
+          lastProcessedDate: t.date,
+          startDate: t.date
+        };
+        await storageService.saveRecurringTemplate(template);
+        setRecurringTemplates(prev => [...prev, template]);
+      }
+      
+      // Cleanup and UI transition
+      setNewTitle(''); 
+      setNewAmount(''); 
+      setPendingTransaction(null); 
+      setView('dashboard');
+      setNewSubCategory('');
+    } catch (err) {
+      console.error("Save failed", err);
+      alert("Failed to save transaction securely. Please try again.");
     }
-    setNewTitle(''); setNewAmount(''); setPendingTransaction(null); setView('dashboard');
-    setNewSubCategory('');
   };
 
   const renderDashboard = () => (
@@ -613,7 +630,7 @@ export default function App() {
 
       <div className="space-y-6">
         <div className="space-y-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Label</label>
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Label (Optional)</label>
           <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="e.g. Starbucks Coffee" className="w-full bg-slate-50 rounded-2xl py-4 px-6 text-sm font-bold text-slate-800 focus:outline-none"/>
         </div>
 
@@ -668,7 +685,7 @@ export default function App() {
           </div>
         )}
       </div>
-      <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20">Encrypt & Save</button>
+      <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-transform">Encrypt & Save</button>
     </div>
   );
 
@@ -778,11 +795,14 @@ export default function App() {
                 <div className="w-full text-center space-y-1">
                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Review Entry</h3>
                   <p className="text-3xl font-black text-slate-900">{prefs.currency}{pendingTransaction.amount}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate max-w-full px-4">
+                    {pendingTransaction.title}
+                  </p>
+                  <p className="text-[9px] text-slate-400 font-medium uppercase tracking-widest opacity-70">
                     {pendingTransaction.category} {pendingTransaction.subCategory && `• ${pendingTransaction.subCategory}`}
                   </p>
                 </div>
-                <button onClick={finalizeSave} className="w-full py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-white bg-blue-600">Save Securely</button>
+                <button onClick={finalizeSave} className="w-full py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-white bg-blue-600 active:scale-[0.98] transition-transform shadow-lg shadow-blue-500/20">Save Securely</button>
               </div>
             </div>
           </div>
