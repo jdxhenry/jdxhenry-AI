@@ -125,4 +125,4 @@ export interface UserPreferences {
   totalMonthlyIncome: number;
 }
 
-export type ViewState = 'dashboard' | 'history' | 'add' | 'insights' | 'settings';
+export type ViewState = 'dashboard' | 'history' | 'add' | 'insights' | 'budget' | 'setup';

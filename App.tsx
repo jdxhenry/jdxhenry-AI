@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Trash2,
   ChevronLeft,
+  ChevronRight,
   Scan,
   Check,
   X,
@@ -48,7 +49,9 @@ import {
   AlertTriangle,
   CreditCard,
   Wifi,
-  Wallet
+  Wallet,
+  FolderPlus,
+  Target
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -96,6 +99,14 @@ const formatCurrency = (val: number) => {
   return Math.round(val).toLocaleString();
 };
 
+const getMonthName = (date: Date) => {
+  return date.toLocaleString('default', { month: 'long' });
+};
+
+const isSameMonth = (d1: Date, d2: Date) => {
+  return d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+};
+
 // --- Components ---
 
 const Navbar: React.FC<{ current: ViewState; setView: (v: ViewState) => void }> = ({ current, setView }) => {
@@ -136,13 +147,48 @@ const Navbar: React.FC<{ current: ViewState; setView: (v: ViewState) => void }> 
       </button>
 
       <button 
-        onClick={() => setView('settings')}
-        className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === 'settings' ? 'text-blue-600' : 'text-slate-400'}`}
+        onClick={() => setView('budget')}
+        className={`flex flex-col items-center gap-1.5 transition-all duration-200 ${current === 'budget' ? 'text-blue-600' : 'text-slate-400'}`}
       >
-        <Settings size={24} strokeWidth={current === 'settings' ? 2.5 : 2} />
-        <span className="text-[10px] font-bold tracking-tight">Setup</span>
+        <Target size={24} strokeWidth={current === 'budget' ? 2.5 : 2} />
+        <span className="text-[10px] font-bold tracking-tight">Budget</span>
       </button>
     </nav>
+  );
+};
+
+const MonthSelector: React.FC<{ selectedDate: Date; onChange: (d: Date) => void }> = ({ selectedDate, onChange }) => {
+  const handlePrev = () => {
+    const d = new Date(selectedDate);
+    d.setMonth(d.getMonth() - 1);
+    onChange(d);
+  };
+  const handleNext = () => {
+    const d = new Date(selectedDate);
+    d.setMonth(d.getMonth() + 1);
+    onChange(d);
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-10 py-4 select-none">
+      <button 
+        onClick={handlePrev} 
+        className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 active:scale-95 transition-all hover:bg-slate-50"
+      >
+        <ChevronLeft size={18} strokeWidth={2.5} />
+      </button>
+      <div className="text-center min-w-[150px]">
+        <span className="text-lg font-bold text-slate-800 tracking-tight">
+          {getMonthName(selectedDate)} {selectedDate.getFullYear()}
+        </span>
+      </div>
+      <button 
+        onClick={handleNext} 
+        className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 active:scale-95 transition-all hover:bg-slate-50"
+      >
+        <ChevronRight size={18} strokeWidth={2.5} />
+      </button>
+    </div>
   );
 };
 
@@ -163,7 +209,7 @@ const CategoryIcon: React.FC<{ category: CategoryType; className?: string }> = (
     case 'Household & Miscellaneous': return <div className={baseClass}><Wrench size={22} /></div>;
     case 'Emergency / Irregular': return <div className={baseClass}><AlertTriangle size={22} /></div>;
     case 'Income': return <div className={baseClass}><Coins size={22} /></div>;
-    default: return <div className={baseClass}><Box size={22} /></div>;
+    default: return <div className={baseClass}><Tag size={22} /></div>;
   }
 };
 
@@ -215,23 +261,23 @@ export default function App() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<CategoryType[]>([]);
   const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_PREFS);
-  const [smsPermission, setSmsPermission] = useState<boolean>(() => {
-    return localStorage.getItem('sms_detection_enabled') === 'true';
-  });
-  const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  // Fix: Added missing timeRange state for Insights view
+  const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   
-  // Background Scanning State
-  const [detectedSMS, setDetectedSMS] = useState<ParsedSMS | null>(null);
-  const [pendingTransaction, setPendingTransaction] = useState<Partial<Transaction & { frequency: RecurringFrequency }> | null>(null);
-
   // Form States
+  const [newCatName, setNewCatName] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newAmount, setNewAmount] = useState('');
-  const [newCategory, setNewCategory] = useState<CategoryType>(Object.keys(CATEGORY_MAP)[1]); // Default Food & Groceries
+  const [newCategory, setNewCategory] = useState<CategoryType>('Food & Groceries');
   const [newSubCategory, setNewSubCategory] = useState<string>('');
   const [newPaymentMethod, setNewPaymentMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
   const [isExpenseMode, setIsExpenseMode] = useState(true);
-  const [newFrequency, setNewFrequency] = useState<RecurringFrequency>(RecurringFrequency.NONE);
+  const [newFrequency] = useState<RecurringFrequency>(RecurringFrequency.NONE);
+
+  // Background Scanning State
+  const [detectedSMS, setDetectedSMS] = useState<ParsedSMS | null>(null);
+  const [pendingTransaction, setPendingTransaction] = useState<Partial<Transaction & { frequency: RecurringFrequency }> | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -246,114 +292,78 @@ export default function App() {
       setRecurringTemplates(rts);
       setCategories(cats);
       setPrefs(p);
-      processRecurringTransactions(rts);
     };
     init();
   }, []);
 
-  const processRecurringTransactions = async (templates: RecurringTemplate[]) => {
-    const now = new Date();
-    let updatedTemplates = [...templates];
-    let newTxns: Transaction[] = [];
+  // Filtered transactions for the current selection
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => isSameMonth(new Date(t.date), selectedDate));
+  }, [transactions, selectedDate]);
 
-    updatedTemplates = updatedTemplates.map(template => {
-      let lastDate = new Date(template.lastProcessedDate);
-      let nextDate = new Date(lastDate);
-
-      if (template.frequency === RecurringFrequency.DAILY) nextDate.setDate(lastDate.getDate() + 1);
-      if (template.frequency === RecurringFrequency.WEEKLY) nextDate.setDate(lastDate.getDate() + 7);
-      if (template.frequency === RecurringFrequency.MONTHLY) nextDate.setMonth(lastDate.getMonth() + 1);
-
-      if (now >= nextDate && template.frequency !== RecurringFrequency.NONE) {
-        const newT: Transaction = {
-          id: Math.random().toString(36).substr(2, 9),
-          title: `[Recurring] ${template.title}`,
-          amount: template.amount,
-          category: template.category,
-          subCategory: template.subCategory,
-          date: nextDate.toISOString(),
-          isExpense: template.isExpense,
-          paymentMethod: template.paymentMethod
-        };
-        newTxns.push(newT);
-        storageService.saveTransaction(newT);
-        return { ...template, lastProcessedDate: nextDate.toISOString() };
-      }
-      return template;
-    });
-
-    if (newTxns.length > 0) {
-      setTransactions(prev => [...newTxns, ...prev]);
-      for (const t of updatedTemplates) {
-        await storageService.updateRecurringTemplate(t);
-      }
-      setRecurringTemplates(updatedTemplates);
-    }
-  };
-
-  useEffect(() => {
-    const backgroundScanner = setInterval(() => {
-      if (!smsPermission || detectedSMS || pendingTransaction) return;
-      if (Math.random() < 0.15) {
-        const smsText = getSimulatedSMS();
-        const parsed = parseSMS(smsText);
-        if (parsed) setDetectedSMS(parsed);
-      }
-    }, 15000);
-    return () => clearInterval(backgroundScanner);
-  }, [detectedSMS, pendingTransaction, smsPermission]);
-
-  const totalExpense = useMemo(() => transactions.filter(t => t.isExpense).reduce((sum, t) => sum + t.amount, 0), [transactions]);
-  const totalIncome = useMemo(() => transactions.filter(t => !t.isExpense).reduce((sum, t) => sum + t.amount, 0), [transactions]);
+  const totalExpense = useMemo(() => filteredTransactions.filter(t => t.isExpense).reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
+  const totalIncome = useMemo(() => filteredTransactions.filter(t => !t.isExpense).reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
   const netSavings = Math.max(0, totalIncome - totalExpense);
   const savingsPercent = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
   const budgetUsedPercent = Math.min(100, (totalExpense / prefs.totalMonthlyIncome) * 100);
 
+  const categorySpending = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredTransactions.forEach(t => {
+      if (t.isExpense) {
+        map[t.category] = (map[t.category] || 0) + t.amount;
+      }
+    });
+    return map;
+  }, [filteredTransactions]);
+
+  const budgetAlerts = useMemo(() => {
+    return budgets.map(b => {
+      const spent = categorySpending[b.category] || 0;
+      const percent = b.limitAmount > 0 ? (spent / b.limitAmount) * 100 : 0;
+      return { category: b.category, spent, limit: b.limitAmount, percent };
+    }).filter(a => a.percent >= 80).sort((a, b) => b.percent - a.percent);
+  }, [budgets, categorySpending]);
+
   const insightsData = useMemo(() => {
-    const expenses = transactions.filter(t => t.isExpense);
+    const expenses = filteredTransactions.filter(t => t.isExpense);
     
     let timeSeriesData = [];
     if (timeRange === 'daily') {
-      timeSeriesData = [...Array(30)].map((_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (29 - i));
-        const dateStr = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+      const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
+      timeSeriesData = [...Array(daysInMonth)].map((_, i) => {
+        const dayLabel = (i + 1).toString();
         const dailySum = expenses
-          .filter(t => new Date(t.date).toDateString() === d.toDateString())
+          .filter(t => new Date(t.date).getDate() === i + 1)
           .reduce((sum, t) => sum + t.amount, 0);
-        return { name: dateStr, amount: dailySum };
+        return { name: dayLabel, amount: dailySum };
       });
     } else if (timeRange === 'weekly') {
-      timeSeriesData = [...Array(12)].map((_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (11 - i) * 7);
-        const label = `W${12-i}`;
+      timeSeriesData = [1, 2, 3, 4].map((week) => {
         const weeklySum = expenses
           .filter(t => {
-            const txDate = new Date(t.date);
-            const diffTime = Math.abs(d.getTime() - txDate.getTime());
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays <= 7;
+            const day = new Date(t.date).getDate();
+            if (week === 1) return day <= 7;
+            if (week === 2) return day > 7 && day <= 14;
+            if (week === 3) return day > 14 && day <= 21;
+            return day > 21;
           })
           .reduce((sum, t) => sum + t.amount, 0);
-        return { name: label, amount: weeklySum };
+        return { name: `W${week}`, amount: weeklySum };
       });
     } else if (timeRange === 'monthly') {
       timeSeriesData = [...Array(6)].map((_, i) => {
-        const d = new Date();
+        const d = new Date(selectedDate);
         d.setMonth(d.getMonth() - (5 - i));
         const monthStr = d.toLocaleDateString(undefined, { month: 'short' });
-        const monthlySum = expenses
-          .filter(t => {
-            const txDate = new Date(t.date);
-            return txDate.getMonth() === d.getMonth() && txDate.getFullYear() === d.getFullYear();
-          })
+        const monthlySum = transactions
+          .filter(t => t.isExpense && isSameMonth(new Date(t.date), d))
           .reduce((sum, t) => sum + t.amount, 0);
         return { name: monthStr, amount: monthlySum };
       });
     }
 
-    const categoryBreakdown = Object.keys(CATEGORY_MAP).map((cat, idx) => {
+    const categoryBreakdown = categories.map((cat, idx) => {
       const sum = expenses
         .filter(t => t.category === cat)
         .reduce((sum, t) => sum + t.amount, 0);
@@ -361,7 +371,7 @@ export default function App() {
     }).filter(c => c.amount > 0).sort((a, b) => b.amount - a.amount);
 
     return { timeSeriesData, categoryBreakdown };
-  }, [transactions, timeRange]);
+  }, [filteredTransactions, transactions, timeRange, categories, selectedDate]);
 
   const startConfirmation = (custom?: Partial<Transaction & { frequency: RecurringFrequency }>) => {
     const amountStr = custom?.amount?.toString() || newAmount;
@@ -370,14 +380,12 @@ export default function App() {
     const subCategory = custom?.subCategory || newSubCategory;
     const paymentMethod = custom?.paymentMethod || newPaymentMethod;
     const isExpense = custom?.isExpense ?? isExpenseMode;
-    const frequency = custom?.frequency || newFrequency;
     
-    // Fallback title if empty: use sub-category or category name
     const title = custom?.title || newTitle || (subCategory !== '' ? subCategory : category);
 
     if (isNaN(amount) || amount <= 0) return;
 
-    setPendingTransaction({ title, amount, category, subCategory, paymentMethod, isExpense, frequency });
+    setPendingTransaction({ title, amount, category, subCategory, paymentMethod, isExpense });
     setDetectedSMS(null);
   };
 
@@ -398,56 +406,45 @@ export default function App() {
     try {
       await storageService.saveTransaction(t);
       setTransactions(prev => [t, ...prev]);
-
-      if (pendingTransaction.frequency && pendingTransaction.frequency !== RecurringFrequency.NONE) {
-        const template: RecurringTemplate = {
-          id: Math.random().toString(36).substr(2, 9),
-          title: t.title,
-          amount: t.amount,
-          category: t.category,
-          subCategory: t.subCategory,
-          isExpense: t.isExpense,
-          paymentMethod: t.paymentMethod,
-          frequency: pendingTransaction.frequency,
-          lastProcessedDate: t.date,
-          startDate: t.date
-        };
-        await storageService.saveRecurringTemplate(template);
-        setRecurringTemplates(prev => [...prev, template]);
-      }
-      
-      // Cleanup and UI transition
       setNewTitle(''); 
       setNewAmount(''); 
       setPendingTransaction(null); 
       setView('dashboard');
-      setNewSubCategory('');
     } catch (err) {
       console.error("Save failed", err);
-      alert("Failed to save transaction securely. Please try again.");
     }
   };
 
-  const renderDashboard = () => (
-    <div className="bg-white min-h-screen pb-32 pt-4 px-6 space-y-8 animate-in fade-in duration-500">
-      {detectedSMS && (
-        <div className="fixed top-6 left-6 right-6 z-[100] animate-in slide-in-from-top-full duration-500">
-          <div className="bg-slate-900 text-white p-5 rounded-[2rem] shadow-2xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-600 p-2 rounded-xl"><Bell size={20} /></div>
-              <div>
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">New UPI SMS</p>
-                <p className="text-sm font-bold truncate max-w-[140px]">{prefs.currency}{detectedSMS.amount} at {detectedSMS.title}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setDetectedSMS(null)} className="p-2 text-slate-400 hover:text-white"><X size={18}/></button>
-              <button onClick={() => startConfirmation({ ...detectedSMS, paymentMethod: PaymentMethod.UPI } as any)} className="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-1">Review <ArrowRight size={14}/></button>
-            </div>
-          </div>
-        </div>
-      )}
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) return;
+    await storageService.addCategory(newCatName.trim());
+    const updated = await storageService.getCategories();
+    setCategories(updated);
+    setNewCatName('');
+  };
 
+  const handleDeleteCategory = async (name: string) => {
+    if (name === 'Income' || name === 'Food & Groceries') return;
+    if (!confirm(`Delete category "${name}"?`)) return;
+    await storageService.deleteCategory(name);
+    const updated = await storageService.getCategories();
+    setCategories(updated);
+  };
+
+  const updateBudgetLimit = async (category: string, amount: number) => {
+    const newBudgets = [...budgets];
+    const index = newBudgets.findIndex(b => b.category === category);
+    if (index !== -1) {
+      newBudgets[index].limitAmount = amount;
+    } else {
+      newBudgets.push({ category, limitAmount: amount });
+    }
+    setBudgets(newBudgets);
+    await storageService.saveBudgets(newBudgets);
+  };
+
+  const renderDashboard = () => (
+    <div className="bg-white min-h-screen pb-32 pt-4 px-6 space-y-6 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
       <header className="flex justify-between items-center">
         <div className="flex items-center gap-2.5">
           <div className="bg-blue-600 p-2 rounded-xl text-white shadow-md shadow-blue-500/20"><ShieldCheck size={24} /></div>
@@ -460,13 +457,15 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <button className="text-slate-800"><Moon size={24} /></button>
-          <button onClick={() => setView('settings')} className="text-slate-800"><Settings size={24} /></button>
+          <button className="text-slate-800 hover:scale-110 transition-transform"><Moon size={22} /></button>
+          <button onClick={() => setView('setup')} className="text-slate-800 active:scale-90 transition-transform"><Settings size={22} /></button>
         </div>
       </header>
 
-      <div className="relative flex justify-center py-4">
-        <div className="w-72 h-72 relative">
+      <MonthSelector selectedDate={selectedDate} onChange={setSelectedDate} />
+
+      <div className="relative flex justify-center pt-2">
+        <div className="w-64 h-64 relative">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -474,7 +473,7 @@ export default function App() {
                   { name: 'Used', value: totalExpense },
                   { name: 'Remaining', value: Math.max(0, prefs.totalMonthlyIncome - totalExpense) }
                 ]}
-                cx="50%" cy="50%" innerRadius={110} outerRadius={125} startAngle={225} endAngle={-45} paddingAngle={0} dataKey="value" cornerRadius={10}
+                cx="50%" cy="50%" innerRadius={100} outerRadius={115} startAngle={225} endAngle={-45} paddingAngle={0} dataKey="value" cornerRadius={10}
               >
                 <RechartsCell fill="#3b82f6" stroke="none" />
                 <RechartsCell fill="#f1f5f9" stroke="none" />
@@ -482,9 +481,9 @@ export default function App() {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <p className="text-xs font-semibold text-slate-400 mb-1">Budget Spent</p>
-            <p className="text-6xl font-black text-slate-900 tracking-tighter">{Math.round(budgetUsedPercent)}%</p>
-            <p className="text-xl font-bold text-blue-600 mt-1">{prefs.currency}{totalExpense.toLocaleString()}</p>
+            <p className="text-[10px] font-semibold text-slate-400 mb-0.5 uppercase tracking-widest">Spent this month</p>
+            <p className="text-5xl font-black text-slate-900 tracking-tighter">{Math.round(budgetUsedPercent)}%</p>
+            <p className="text-lg font-bold text-blue-600 mt-1">{prefs.currency}{totalExpense.toLocaleString()}</p>
           </div>
         </div>
       </div>
@@ -496,29 +495,84 @@ export default function App() {
           { label: 'Saved', value: `${savingsPercent}%`, color: 'text-blue-600' }
         ].map((card, i) => (
           <div key={i} className="bg-white border border-slate-50 rounded-2xl p-4 shadow-sm text-center space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
-            <p className={`text-lg font-black tracking-tight ${card.color || 'text-slate-900'}`}>{card.value}</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
+            <p className={`text-base font-black tracking-tight ${card.color || 'text-slate-900'}`}>{card.value}</p>
           </div>
         ))}
+      </div>
+
+      {budgetAlerts.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Budget Alerts</h2>
+            <div className="h-px flex-1 mx-4 bg-slate-50" />
+          </div>
+          <div className="space-y-3">
+            {budgetAlerts.slice(0, 3).map((alert, i) => (
+              <div key={i} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CategoryIcon category={alert.category} className="!p-2 !bg-white !shadow-sm" />
+                  <div>
+                    <p className="text-xs font-bold text-slate-800">{alert.category}</p>
+                    <div className="w-32 h-1 bg-white rounded-full mt-1 overflow-hidden">
+                      <div className={`h-full ${alert.percent > 100 ? 'bg-red-500' : 'bg-orange-500'}`} style={{ width: `${Math.min(100, alert.percent)}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`text-xs font-black ${alert.percent > 100 ? 'text-red-500' : 'text-orange-600'}`}>
+                    {Math.round(alert.percent)}%
+                  </p>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
+                    {prefs.currency}{alert.spent.toLocaleString()} / {prefs.currency}{alert.limit.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+
+  const renderHistory = () => (
+    <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-6 overflow-y-auto custom-scrollbar">
+      <div className="space-y-4">
+        <h1 className="text-2xl font-black text-slate-900">Vault History</h1>
+        <MonthSelector selectedDate={selectedDate} onChange={setSelectedDate} />
+      </div>
+      <div className="space-y-1">
+        {filteredTransactions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 opacity-40">
+            <Clock size={48} className="mb-4 text-slate-200" />
+            <p className="text-center text-slate-400 font-bold">No entries for this month</p>
+          </div>
+        ) : (
+          filteredTransactions.map(t => (
+            <TransactionRow key={t.id} transaction={t} currency={prefs.currency} onDelete={id => storageService.deleteTransaction(id).then(() => setTransactions(prev => prev.filter(p => p.id !== id)))} />
+          ))
+        )}
       </div>
     </div>
   );
 
   const renderInsights = () => (
-    <div className="bg-slate-50 min-h-screen px-4 pb-32 pt-6 space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center px-2">
-        <h1 className="text-2xl font-black text-slate-900">Trends</h1>
-        <div className="flex bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
-          {(['daily', 'weekly', 'monthly'] as const).map((r) => (
-            <button 
-              key={r}
-              onClick={() => setTimeRange(r)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${timeRange === r ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+    <div className="bg-slate-50 min-h-screen px-4 pb-32 pt-6 space-y-6 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+      <div className="space-y-4">
+        <h1 className="text-2xl font-black text-slate-900 px-2">Trends</h1>
+        <MonthSelector selectedDate={selectedDate} onChange={setSelectedDate} />
+      </div>
+
+      <div className="flex bg-white p-1 rounded-xl border border-slate-100 shadow-sm mx-2">
+        {(['daily', 'weekly', 'monthly'] as const).map((r) => (
+          <button 
+            key={r}
+            onClick={() => setTimeRange(r)}
+            className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${timeRange === r ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}
+          >
+            {r}
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
@@ -575,7 +629,7 @@ export default function App() {
               <XAxis 
                 dataKey="name" axisLine={false} tickLine={false} 
                 tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}}
-                interval={timeRange === 'daily' ? 6 : 0}
+                interval={timeRange === 'daily' ? 4 : 0}
               />
               <YAxis hide />
               <Tooltip 
@@ -589,17 +643,44 @@ export default function App() {
     </div>
   );
 
-  const renderHistory = () => (
-    <div className="bg-white min-h-screen px-6 pb-24 pt-6 space-y-6">
-      <h1 className="text-2xl font-black text-slate-900">Vault History</h1>
-      <div className="space-y-1 overflow-y-auto max-h-[70vh] custom-scrollbar">
-        {transactions.length === 0 ? (
-          <p className="text-center text-slate-400 py-20 font-bold">No entries yet</p>
-        ) : (
-          transactions.map(t => (
-            <TransactionRow key={t.id} transaction={t} currency={prefs.currency} onDelete={id => storageService.deleteTransaction(id).then(() => setTransactions(prev => prev.filter(p => p.id !== id)))} />
-          ))
-        )}
+  const renderBudget = () => (
+    <div className="bg-white min-h-screen px-6 pb-32 pt-6 space-y-8 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+      <div className="flex items-center gap-3">
+        <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-500/20"><Target size={24} /></div>
+        <h1 className="text-2xl font-black text-slate-900">Budget Setup</h1>
+      </div>
+
+      <div className="bg-slate-50 p-6 rounded-[2.5rem] space-y-8 shadow-inner">
+        <div className="space-y-1">
+          <p className="text-xs font-bold text-black uppercase tracking-widest ml-1">Monthly Goal Allocation</p>
+          <p className="text-[10px] text-slate-500 font-medium ml-1">Set spending limits per category</p>
+        </div>
+        
+        <div className="space-y-5">
+          {categories.filter(c => c !== 'Income').map(cat => {
+            const b = budgets.find(b => b.category === cat);
+            return (
+              <div key={cat} className="space-y-2 group">
+                <div className="flex justify-between items-center px-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-bold text-black">{cat}</span>
+                  </div>
+                  <span className="text-[11px] font-black text-blue-600">{prefs.currency}{b?.limitAmount.toLocaleString() || 0}</span>
+                </div>
+                <div className="relative flex items-center bg-white rounded-2xl p-4 gap-3 border border-slate-100 shadow-sm focus-within:ring-2 focus-within:ring-blue-200 transition-all">
+                  <span className="text-sm font-bold text-black opacity-40">{prefs.currency}</span>
+                  <input 
+                    type="number" 
+                    defaultValue={b?.limitAmount || 0}
+                    onBlur={(e) => updateBudgetLimit(cat, parseInt(e.target.value) || 0)}
+                    className="bg-transparent border-none outline-none font-bold text-black w-full text-base placeholder:text-slate-300"
+                    placeholder="Enter limit"
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -624,7 +705,7 @@ export default function App() {
       </div>
 
       <div className="flex bg-slate-50 p-1.5 rounded-2xl">
-        <button onClick={() => { setIsExpenseMode(true); setNewCategory(Object.keys(CATEGORY_MAP)[1]); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${isExpenseMode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Expense</button>
+        <button onClick={() => { setIsExpenseMode(true); setNewCategory('Food & Groceries'); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${isExpenseMode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Expense</button>
         <button onClick={() => { setIsExpenseMode(false); setNewCategory('Income'); }} className={`flex-1 py-3.5 rounded-xl text-xs font-bold uppercase transition-all ${!isExpenseMode ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Income</button>
       </div>
 
@@ -652,7 +733,7 @@ export default function App() {
         <div className="space-y-4">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Category</label>
           <div className="grid grid-cols-3 gap-3">
-            {(isExpenseMode ? Object.keys(CATEGORY_MAP).filter(k => k !== 'Income') : ['Income']).map(cat => (
+            {(isExpenseMode ? categories.filter(k => k !== 'Income') : ['Income']).map(cat => (
               <button 
                 key={cat} 
                 onClick={() => {
@@ -667,70 +748,57 @@ export default function App() {
             ))}
           </div>
         </div>
-
-        {newCategory && CATEGORY_MAP[newCategory] && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Sub-category</label>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORY_MAP[newCategory].map(sub => (
-                <button
-                  key={sub}
-                  onClick={() => setNewSubCategory(sub)}
-                  className={`px-3 py-2 rounded-full text-[9px] font-bold uppercase transition-all border ${newSubCategory === sub ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-400 border-transparent'}`}
-                >
-                  {sub}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
       <button onClick={() => startConfirmation()} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-widest mt-6 shadow-xl shadow-blue-500/20 active:scale-[0.98] transition-transform">Encrypt & Save</button>
     </div>
   );
 
-  const renderSettings = () => (
-    <div className="bg-white min-h-screen px-6 pb-32 pt-6 space-y-10">
+  const renderSetup = () => (
+    <div className="bg-white min-h-screen px-6 pb-32 pt-6 space-y-10 overflow-y-auto custom-scrollbar animate-in slide-in-from-right-full duration-400">
       <div className="flex items-center gap-3">
-        <button onClick={() => setView('dashboard')} className="p-2 -ml-2 text-slate-400"><ChevronLeft size={28} /></button>
+        <button onClick={() => setView('dashboard')} className="p-2 -ml-2 text-slate-400 active:scale-90 transition-transform"><ChevronLeft size={28} /></button>
         <h1 className="text-2xl font-black text-slate-900">Setup</h1>
       </div>
+      
       <div className="space-y-12">
         <section className="space-y-6">
           <div className="flex items-center gap-2 px-1">
-            <div className="p-2 bg-emerald-600 text-white rounded-lg"><Lock size={18}/></div>
-            <h2 className="text-lg font-bold text-slate-800">Security Vault</h2>
+            <div className="p-2 bg-emerald-600 text-white rounded-lg shadow-md shadow-emerald-500/20"><FolderPlus size={18}/></div>
+            <h2 className="text-lg font-bold text-slate-800">Category Management</h2>
           </div>
-          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-4">
-             <button 
-                onClick={() => {
-                  const blob = new Blob([JSON.stringify(transactions)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `private_vault.json`;
-                  a.click();
-                }}
-                className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-slate-600"
-              >
-                <Download size={14}/> Export Vault
-              </button>
-              <button 
-                onClick={() => {
-                   if(confirm('Wipe all local data? This cannot be undone.')) {
-                     storageService.clearAll();
-                     window.location.reload();
-                   }
-                }}
-                className="w-full py-3 text-red-500 text-[10px] font-bold uppercase tracking-widest"
-              >
-                Clear All Data
-              </button>
+          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-6">
+            <div className="space-y-3">
+               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Create Custom Category</label>
+               <div className="flex gap-2">
+                 <input 
+                    type="text" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="e.g. Subscriptions" 
+                    className="flex-1 bg-white rounded-xl py-3 px-4 text-sm font-bold text-slate-800 focus:outline-none border border-slate-100 shadow-sm"
+                 />
+                 <button onClick={handleAddCategory} className="bg-blue-600 text-white p-3 rounded-xl shadow-md shadow-blue-500/20 active:scale-90 transition-transform">
+                   <Plus size={20} />
+                 </button>
+               </div>
+            </div>
+            <div className="space-y-3">
+               <div className="flex flex-wrap gap-2">
+                 {categories.map(cat => (
+                   <div key={cat} className="flex items-center gap-2 bg-white py-2 pl-4 pr-2 rounded-full border border-slate-100 shadow-sm group">
+                     <span className="text-[11px] font-bold text-slate-700">{cat}</span>
+                     {cat !== 'Income' && cat !== 'Food & Groceries' && (
+                       <button onClick={() => handleDeleteCategory(cat)} className="p-1 text-slate-300 hover:text-red-500 transition-colors">
+                         <X size={14} />
+                       </button>
+                     )}
+                   </div>
+                 ))}
+               </div>
+            </div>
           </div>
         </section>
+
         <section className="space-y-6">
           <div className="flex items-center gap-2 px-1">
-             <div className="p-2 bg-slate-50 text-slate-600 rounded-lg"><Settings size={18}/></div>
+             <div className="p-2 bg-slate-200 text-slate-700 rounded-lg"><Settings size={18}/></div>
              <h2 className="text-lg font-bold text-slate-800">Preferences</h2>
           </div>
           <div className="bg-slate-50 p-6 rounded-[2rem] space-y-6">
@@ -753,8 +821,8 @@ export default function App() {
               </div>
             </div>
             <div className="space-y-4">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Monthly Income Target</label>
-              <div className="flex items-center bg-white rounded-2xl p-4 gap-3 border border-slate-100">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Monthly Income Target</label>
+              <div className="flex items-center bg-white rounded-2xl p-4 gap-3 border border-slate-100 shadow-sm">
                 <span className="font-bold text-slate-400">{prefs.currency}</span>
                 <input 
                   type="number" 
@@ -771,6 +839,39 @@ export default function App() {
             </div>
           </div>
         </section>
+
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 px-1">
+            <div className="p-2 bg-slate-900 text-white rounded-lg shadow-md"><Lock size={18}/></div>
+            <h2 className="text-lg font-bold text-slate-800">Security Vault</h2>
+          </div>
+          <div className="bg-slate-50 p-6 rounded-[2rem] space-y-4">
+             <button 
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify(transactions)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `private_vault.json`;
+                  a.click();
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm active:scale-95 transition-transform"
+              >
+                <Download size={14}/> Export Vault
+              </button>
+              <button 
+                onClick={() => {
+                   if(confirm('Wipe all local data? This cannot be undone.')) {
+                     storageService.clearAll();
+                     window.location.reload();
+                   }
+                }}
+                className="w-full py-3 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 rounded-xl transition-colors"
+              >
+                Clear All Data
+              </button>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -783,9 +884,10 @@ export default function App() {
           {view === 'history' && renderHistory()}
           {view === 'add' && renderAdd()}
           {view === 'insights' && renderInsights()}
-          {view === 'settings' && renderSettings()}
+          {view === 'budget' && renderBudget()}
+          {view === 'setup' && renderSetup()}
         </main>
-        {view !== 'add' && <Navbar current={view} setView={setView} />}
+        {view !== 'add' && view !== 'setup' && <Navbar current={view} setView={setView} />}
         {pendingTransaction && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center px-6">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setPendingTransaction(null)}/>
