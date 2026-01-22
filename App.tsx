@@ -81,7 +81,7 @@ import { storageService } from './storageService.ts';
 import { parseSMS, getSimulatedSMS, ParsedSMS } from './smsParser.ts';
 
 // --- Constants ---
-const CHART_COLORS = ['#4F46E5', '#F59E0B', '#10B981', '#8B5CF6', '#F97316', '#06B6D4', '#EC4899', '#64748B'];
+const CHART_COLORS = ['#EC4899', '#F59E0B', '#64748B', '#4F46E5', '#10B981', '#8B5CF6', '#F97316', '#06B6D4'];
 
 const DEFAULT_PREFS: UserPreferences = {
   currency: Currency.INR,
@@ -310,6 +310,7 @@ export default function App() {
 
   const insightsData = useMemo(() => {
     const expenses = transactions.filter(t => t.isExpense);
+    const totalExpensesSum = expenses.reduce((sum, t) => sum + t.amount, 0);
     
     let timeSeriesData = [];
     if (timeRange === 'daily') {
@@ -356,10 +357,15 @@ export default function App() {
       const sum = expenses
         .filter(t => t.category === cat)
         .reduce((sum, t) => sum + t.amount, 0);
-      return { name: cat, amount: sum, fill: CHART_COLORS[idx % CHART_COLORS.length] };
+      return { 
+        name: cat, 
+        amount: sum, 
+        fill: CHART_COLORS[idx % CHART_COLORS.length],
+        percentage: totalExpensesSum > 0 ? ((sum / totalExpensesSum) * 100).toFixed(1) : "0"
+      };
     }).filter(c => c.amount > 0).sort((a, b) => b.amount - a.amount);
 
-    return { timeSeriesData, categoryBreakdown };
+    return { timeSeriesData, categoryBreakdown, totalExpensesSum };
   }, [transactions, timeRange]);
 
   const handleSaveDirectly = async (custom?: Partial<Transaction & { frequency: RecurringFrequency }>) => {
@@ -449,10 +455,6 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="text-slate-800"><Moon size={24} /></button>
-          <button onClick={() => setView('settings')} className="text-slate-800"><Settings size={24} /></button>
-        </div>
       </header>
 
       <div className="relative flex justify-center py-4">
@@ -495,15 +497,15 @@ export default function App() {
   );
 
   const renderInsights = () => (
-    <div className="bg-slate-50 min-h-screen px-4 pb-32 pt-6 space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center px-2">
-        <h1 className="text-2xl font-black text-slate-900">Trends</h1>
-        <div className="flex bg-white p-1 rounded-xl border border-slate-100 shadow-sm">
+    <div className="bg-white min-h-screen px-4 pb-32 pt-6 space-y-8 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+      <div className="flex flex-col items-center gap-4">
+        <h1 className="text-lg font-bold text-slate-900">Expenses by Category</h1>
+        <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100 w-full max-w-xs">
           {(['daily', 'weekly', 'monthly'] as const).map((r) => (
             <button 
               key={r}
               onClick={() => setTimeRange(r)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${timeRange === r ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${timeRange === r ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400'}`}
             >
               {r}
             </button>
@@ -511,57 +513,69 @@ export default function App() {
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg">
-              <Tag size={16} />
-            </div>
-            <h2 className="text-base font-bold text-slate-800">Top Categories</h2>
+      <div className="flex flex-col items-center gap-8 py-4">
+        <div className="w-full h-64 relative flex items-center justify-center">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={insightsData.categoryBreakdown}
+                cx="50%" cy="50%" 
+                innerRadius={70} 
+                outerRadius={95} 
+                paddingAngle={4} 
+                dataKey="amount" 
+                cornerRadius={8} 
+                stroke="none"
+              >
+                {insightsData.categoryBreakdown.map((entry, index) => (
+                  <RechartsCell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+            <p className="text-4xl font-black text-slate-900 leading-none">{insightsData.categoryBreakdown.length}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">categories</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-8">
-          <div className="w-32 h-32 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={insightsData.categoryBreakdown}
-                  cx="50%" cy="50%" innerRadius={35} outerRadius={50} paddingAngle={8} dataKey="amount" cornerRadius={6} stroke="none"
-                >
-                  {insightsData.categoryBreakdown.map((entry, index) => (
-                    <RechartsCell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex-1 space-y-3">
-            {insightsData.categoryBreakdown.slice(0, 5).map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-6 rounded-full" style={{ backgroundColor: item.fill }} />
-                  <span className="text-[10px] font-bold text-slate-600 truncate max-w-[80px]">{item.name}</span>
-                </div>
-                <span className="text-[10px] font-black text-slate-900">{prefs.currency}{formatCurrency(item.amount)}</span>
+        <div className="w-full px-4 space-y-4">
+          {insightsData.categoryBreakdown.map((item, idx) => (
+            <div key={idx} className="flex items-center justify-between group">
+              <div className="flex items-center gap-4">
+                <div className="w-3.5 h-3.5 rounded-md shadow-sm" style={{ backgroundColor: item.fill }} />
+                <span className="text-sm font-semibold text-slate-600 transition-colors group-hover:text-slate-900">{item.name}</span>
               </div>
-            ))}
-          </div>
+              <div className="flex items-center gap-4">
+                <span className="text-xs font-bold text-slate-400">{item.percentage}%</span>
+                <span className="text-sm font-black text-slate-900 min-w-[60px] text-right">{prefs.currency}{formatCurrency(item.amount)}</span>
+              </div>
+            </div>
+          ))}
+          
+          {insightsData.categoryBreakdown.length === 0 && (
+            <div className="py-12 text-center">
+              <div className="bg-slate-50 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                <TrendingUp size={24} className="text-slate-300" />
+              </div>
+              <p className="text-sm font-bold text-slate-400">No data for this range</p>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4">
-        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Spending Velocity</h2>
+      <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100 space-y-4 mx-2">
+        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Spending Velocity</h2>
         <div className="h-48 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={insightsData.timeSeriesData}>
               <defs>
                 <linearGradient id="colorAmtTrends" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.2}/>
+                  <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.15}/>
                   <stop offset="95%" stopColor="#4F46E5" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis 
                 dataKey="name" axisLine={false} tickLine={false} 
                 tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}}
@@ -569,7 +583,7 @@ export default function App() {
               />
               <YAxis hide />
               <Tooltip 
-                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 'bold' }}
+                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }}
               />
               <Area type="monotone" dataKey="amount" stroke="#4F46E5" strokeWidth={3} fillOpacity={1} fill="url(#colorAmtTrends)" />
             </AreaChart>
@@ -780,4 +794,3 @@ export default function App() {
     </div>
   );
 }
-
