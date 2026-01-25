@@ -91,9 +91,10 @@ const DEFAULT_PREFS: UserPreferences = {
 
 // --- Helper for Formatting ---
 const formatCurrency = (val: number) => {
-  if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
-  if (val >= 1000) return `${(val / 1000).toFixed(1)}k`;
-  return Math.round(val).toLocaleString();
+  const absoluteVal = Math.abs(val);
+  if (absoluteVal >= 1000000) return `${val < 0 ? '-' : ''}${(absoluteVal / 1000000).toFixed(1)}M`;
+  if (absoluteVal >= 1000) return `${val < 0 ? '-' : ''}${(absoluteVal / 1000).toFixed(1)}k`;
+  return val.toLocaleString();
 };
 
 // --- Components ---
@@ -304,12 +305,30 @@ export default function App() {
 
   const totalExpense = useMemo(() => transactions.filter(t => t.isExpense).reduce((sum, t) => sum + t.amount, 0), [transactions]);
   const totalIncome = useMemo(() => transactions.filter(t => !t.isExpense).reduce((sum, t) => sum + t.amount, 0), [transactions]);
-  const netSavings = Math.max(0, totalIncome - totalExpense);
-  const savingsPercent = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
+  const balanceAmount = totalIncome - totalExpense;
   const budgetUsedPercent = Math.min(100, (totalExpense / prefs.totalMonthlyIncome) * 100);
 
   const insightsData = useMemo(() => {
-    const expenses = transactions.filter(t => t.isExpense);
+    const now = new Date();
+    // Filter expenses by the selected time range period
+    const expenses = transactions.filter(t => t.isExpense).filter(t => {
+      const txDate = new Date(t.date);
+      if (timeRange === 'daily') {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return txDate >= d;
+      } else if (timeRange === 'weekly') {
+        const d = new Date();
+        d.setDate(d.getDate() - 84); // 12 weeks
+        return txDate >= d;
+      } else if (timeRange === 'monthly') {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 6); // 6 months
+        return txDate >= d;
+      }
+      return true;
+    });
+
     const totalExpensesSum = expenses.reduce((sum, t) => sum + t.amount, 0);
     
     let timeSeriesData = [];
@@ -485,7 +504,7 @@ export default function App() {
         {[
           { label: 'Income', value: `${prefs.currency}${formatCurrency(totalIncome)}` },
           { label: 'Spent', value: `${prefs.currency}${formatCurrency(totalExpense)}` },
-          { label: 'Saved', value: `${savingsPercent}%`, color: 'text-blue-600' }
+          { label: 'Balance', value: `${prefs.currency}${formatCurrency(balanceAmount)}`, color: 'text-blue-600' }
         ].map((card, i) => (
           <div key={i} className="bg-white border border-slate-50 rounded-2xl p-4 shadow-sm text-center space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{card.label}</p>
@@ -534,8 +553,8 @@ export default function App() {
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-            <p className="text-4xl font-black text-slate-900 leading-none">{insightsData.categoryBreakdown.length}</p>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">categories</p>
+            <p className="text-2xl font-black text-slate-900 leading-none">{prefs.currency}{formatCurrency(insightsData.totalExpensesSum)}</p>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total Spent</p>
           </div>
         </div>
 
