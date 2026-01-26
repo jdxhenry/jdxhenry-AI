@@ -13,14 +13,14 @@ const KEYS = {
 const DEFAULT_CATEGORIES: CategoryType[] = Object.keys(CATEGORY_MAP);
 
 const DEFAULT_PREFS: UserPreferences = {
-  currency: Currency.INR,
+  currency: Currency.USD,
   isDarkMode: false,
-  totalMonthlyIncome: 75000
+  totalMonthlyIncome: 76000
 };
 
 const DEFAULT_BUDGETS: Budget[] = Object.keys(CATEGORY_MAP).map(cat => ({
   category: cat,
-  limitAmount: 5000
+  limitAmount: 10000
 }));
 
 async function getEncryptedItem<T>(key: string, defaultValue: T): Promise<T> {

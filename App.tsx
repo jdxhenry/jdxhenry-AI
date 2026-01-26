@@ -84,10 +84,36 @@ import { parseSMS, getSimulatedSMS, ParsedSMS } from './smsParser.ts';
 const CHART_COLORS = ['#EC4899', '#F59E0B', '#64748B', '#4F46E5', '#10B981', '#8B5CF6', '#F97316', '#06B6D4'];
 
 const DEFAULT_PREFS: UserPreferences = {
-  currency: Currency.INR,
+  currency: Currency.USD,
   isDarkMode: false,
-  totalMonthlyIncome: 75000
+  totalMonthlyIncome: 76000
 };
+
+// Helper for dynamic dummy dates
+const getDate = (daysAgo: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d.toISOString();
+};
+
+// --- Dummy Data Setup (Total Income: 76K, Total Expenses: 67.5K, Balance: 8.5K) ---
+const DUMMY_TRANSACTIONS: Transaction[] = [
+  { id: 'd1', title: 'Principal Monthly Salary', amount: 76000, category: 'Income', subCategory: 'Salary', date: getDate(25), isExpense: false, paymentMethod: PaymentMethod.NET_BANKING },
+  { id: 'd2', title: 'Main Residence Rent', amount: 12000, category: 'Housing & Utilities', subCategory: 'House rent', date: getDate(20), isExpense: true, paymentMethod: PaymentMethod.NET_BANKING },
+  { id: 'd3', title: 'Housing MMC', amount: 2000, category: 'Housing & Utilities', subCategory: 'Maintenance charges', date: getDate(18), isExpense: true, paymentMethod: PaymentMethod.UPI },
+  { id: 'd4', title: 'Full Month Groceries', amount: 10000, category: 'Food & Groceries', subCategory: 'Monthly groceries', date: getDate(15), isExpense: true, paymentMethod: PaymentMethod.CARD },
+  { id: 'd5', title: 'Monthly Fuel Budget', amount: 3000, category: 'Transportation', subCategory: 'Fuel (petrol / diesel / CNG)', date: getDate(12), isExpense: true, paymentMethod: PaymentMethod.UPI },
+  { id: 'd6', title: 'Medical Hospital Checkup', amount: 4000, category: 'Health & Medical', subCategory: 'Hospital expenses', date: getDate(10), isExpense: true, paymentMethod: PaymentMethod.CARD },
+  { id: 'd7', title: 'Advanced Coding Course', amount: 4000, category: 'Education & Learning', subCategory: 'Online courses', date: getDate(9), isExpense: true, paymentMethod: PaymentMethod.CARD },
+  { id: 'd8', title: 'Wardrobe Refresh', amount: 5000, category: 'Personal & Lifestyle', subCategory: 'Clothing & footwear', date: getDate(8), isExpense: true, paymentMethod: PaymentMethod.CARD },
+  { id: 'd9', title: 'Annual OTT Subscriptions', amount: 2000, category: 'Entertainment & Leisure', subCategory: 'OTT subscriptions', date: getDate(7), isExpense: true, paymentMethod: PaymentMethod.UPI },
+  { id: 'd10', title: 'International Flight Booking', amount: 6000, category: 'Travel & Vacation', subCategory: 'Flight / train / bus tickets', date: getDate(6), isExpense: true, paymentMethod: PaymentMethod.NET_BANKING },
+  { id: 'd11', title: 'Family Wedding Gift', amount: 3000, category: 'Family & Social', subCategory: 'Gifts (festivals, birthdays, weddings)', date: getDate(5), isExpense: true, paymentMethod: PaymentMethod.CASH },
+  { id: 'd12', title: 'Personal Loan EMI', amount: 10000, category: 'Financial Commitments', subCategory: 'Loan EMI (home, car, personal)', date: getDate(4), isExpense: true, paymentMethod: PaymentMethod.NET_BANKING },
+  { id: 'd13', title: 'Cloud Infrastructure License', amount: 2500, category: 'Digital & Online', subCategory: 'Software licenses', date: getDate(3), isExpense: true, paymentMethod: PaymentMethod.CARD },
+  { id: 'd14', title: 'Major Home Appliance Repair', amount: 2000, category: 'Household & Miscellaneous', subCategory: 'Repairs & maintenance', date: getDate(2), isExpense: true, paymentMethod: PaymentMethod.UPI },
+  { id: 'd15', title: 'Emergency Repair Fund', amount: 2000, category: 'Emergency / Irregular', subCategory: 'Repairs', date: getDate(1), isExpense: true, paymentMethod: PaymentMethod.CASH },
+];
 
 // --- Helper for Formatting ---
 const formatCurrency = (val: number) => {
@@ -235,12 +261,20 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
-      const txs = await storageService.getTransactions();
+      let txs = await storageService.getTransactions();
       const bgs = await storageService.getBudgets();
       const rts = await storageService.getRecurringTemplates();
       const cats = await storageService.getCategories();
       const p = await storageService.getPreferences();
       
+      // Auto-populate dummy data for verification if no transactions exist
+      if (txs.length === 0) {
+        for (const t of DUMMY_TRANSACTIONS) {
+          await storageService.saveTransaction(t);
+        }
+        txs = await storageService.getTransactions();
+      }
+
       setTransactions(txs);
       setBudgets(bgs);
       setRecurringTemplates(rts);
